@@ -50,6 +50,15 @@ input[type=range]{accent-color:#8af}input[type=checkbox]{accent-color:#8af;width
 <label>Tila <select id="mode"><option value="play">Soita (pisteytys)</option><option value="wait">Odotustila (odottaa oikeaa näppäintä)</option><option value="listen">Kuuntele (automaattinen)</option></select></label>
 <label>Kädet <select id="hands"><option value="both">Molemmat</option><option value="R">Oikea</option><option value="L">Vasen</option></select></label>
 <label>Toista toinen käsi automaattisesti <input type="checkbox" id="autoOther" checked></label>
+<div style="border:1px solid #ffffff30;border-radius:10px;padding:4px 8px;margin:4px 0">
+<label><b>🔁 Toisto</b> <select id="loopMode"><option value="off">Pois</option><option value="inf">Jatkuva</option><option value="n">N kertaa</option></select></label>
+<label id="rowLoopN">Kertoja <input type="number" id="loopN" min="1" max="99" style="width:60px"></label>
+<label>A–B tahdit <span><input type="number" id="loopA" min="1" step="1" placeholder="A" style="width:50px"> – <input type="number" id="loopB" min="1" step="1" placeholder="B" style="width:50px"></span></label>
+<div><button id="setA">Aseta A</button><button id="setB">Aseta B</button><button id="clrAB">Tyhjennä A–B</button></div>
+<label>Tauko/sisäänlaskenta (tahteja) <input type="number" id="loopGap" min="0" max="4" step="0.5" style="width:60px"></label>
+<label>Tempon nosto / kierros % <input type="number" id="loopUp" min="0" max="50" step="1" style="width:60px"></label>
+<label>Enimmäistempo % <input type="number" id="loopMax" min="10" max="200" step="5" style="width:60px"></label>
+<small>A–B tyhjänä = koko kappale. Tahdit lasketaan 4/4-tahtilajissa.</small></div>
 <label>Tempo <input type="range" id="tempo" min="0.25" max="2" step="0.05" value="1"><span id="tempoV"></span></label>
 <label>Putoamisnopeus <input type="range" id="fall" min="0.5" max="8" step="0.1" value="3"><span id="fallV"></span></label>
 <label>Grafiikka <select id="gfx"><option value="full">Täysi</option><option value="lite">Kevyt (hitaat laitteet)</option></select></label>
@@ -278,7 +287,7 @@ function parseMidi(buf,name){const d=new DataView(buf);let p=0;const str=n=>{let
  const notes=raw.map(r=>({t:toSec(r.s),d:Math.max(0.05,toSec(r.e)-toSec(r.s)),n:r.n,h:trs.length>=2?(r.tr===trs[0]?'R':'L'):(r.n>=60?'R':'L')}));
  notes.sort((a,b)=>a.t-b.t);const t0=notes.length?notes[0].t:0;notes.forEach(x=>x.t-=t0);return{name,notes,beat:(tempos.find(x=>x.tick===0&&x.us!==500000)||tempos[tempos.length>1?1:0]).us/1e6};}
 // ---- settings
-const DEF={keys:49,low:36,kbLeft:0,kbW:100,kbH:18,flip:false,wave:'sawtooth',cut:3000,res:2,att:0.01,dec:0.3,sus:0.6,rel:0.3,vol:0.4,tempo:1,fall:3,mode:'play',hands:'both',autoOther:true,names:true,midiSound:false,transp:0,gfx:'full',input:'midi',micGate:0.01,micLat:100,micChord:false,unit:'cm',scrMode:'diag',diag:55,aspect:'16:9',scrWmm:1218,kbPhysMm:682,kbAuto:true,kbOffMm:270,physOn:false};
+const DEF={keys:49,low:36,kbLeft:0,kbW:100,kbH:18,flip:false,wave:'sawtooth',cut:3000,res:2,att:0.01,dec:0.3,sus:0.6,rel:0.3,vol:0.4,tempo:1,fall:3,mode:'play',hands:'both',autoOther:true,names:true,midiSound:false,transp:0,gfx:'full',loopMode:'off',loopN:3,loopA:null,loopB:null,loopGap:1,loopUp:0,loopMax:100,input:'midi',micGate:0.01,micLat:100,micChord:false,unit:'cm',scrMode:'diag',diag:55,aspect:'16:9',scrWmm:1218,kbPhysMm:682,kbAuto:true,kbOffMm:270,physOn:false};
 let S=Object.assign({},DEF,JSON.parse(localStorage.getItem('syntikkapeli')||'{}'));
 const save=()=>localStorage.setItem('syntikkapeli',JSON.stringify(S));
 for(let n=21;n<=72;n++){const o=document.createElement('option');o.value=n;o.textContent=noteName(n);$('low').appendChild(o);}
@@ -331,15 +340,15 @@ function buildList(){const sel=$('song'),cur=sel.value,f=+$('diffF').value,so=$(
  if(customSong){const o=document.createElement('option');o.value=-1;o.textContent='Oma: '+customSong.name;sel.appendChild(o);}
  if([...sel.options].some(o=>o.value===cur))sel.value=cur;}
 function songInfo(){const i=+$('song').value;$('songInfo').textContent=i>=0?'Vaikeus '+STARS(SONGS[i][1])+' · '+SONGS[i][4]+' · Lähde: '+SONGS[i][3]+' (public domain)':'';}
-function loadSong(s){song=s;s.notes.forEach(x=>{x.hit=false;x.miss=false;});songT=-2;playing=false;resetScore();stopAuto();
+function loadSong(s){song=s;s.notes.forEach(x=>{x.hit=false;x.miss=false;x.ghost=false;x._wasGhost=false;});songT=-2;playing=false;resetScore();if(S.loopA)songT=sectionStart();stopAuto();
  if(![...$('song').options].some(o=>o.textContent===s.name&&o.value>=0)){}hud();}
-function resetScore(){score=hits=misses=combo=0;if(song)song.notes.forEach(x=>{x.hit=x.miss=false;});}
+function resetScore(){score=hits=misses=combo=0;loopCount=0;loopScores=[];loopBase=0;if(song){song.notes.forEach(x=>{x.hit=x.miss=false;});if(typeof prepSection==='function'&&song.notes.length)prepSection();}}
 function stopAuto(){autoOn.forEach(n=>{if(ac)noteOff(n)});autoOn.clear();}
 $('song').onchange=e=>{const i=+e.target.value;songInfo();if(i>=0)loadSong(parseTab(SONGS[i][2],SONGS[i][0]));else if(customSong)loadSong(customSong);};
 let customSong=null;$('catF').onchange=$('diffF').onchange=$('sortS').onchange=()=>{buildList();$('song').onchange({target:$('song')});};buildList();
 function addCustom(s){customSong=s;buildList();let o=$('song').querySelector('option[value="-1"]');if(!o){o=document.createElement('option');o.value=-1;$('song').appendChild(o);}o.textContent='Oma: '+s.name;$('song').value=-1;loadSong(s);}
 $('play').onclick=()=>{audio();playing=true;};$('pause').onclick=()=>{playing=false;stopAuto();};
-$('restart').onclick=()=>{songT=-2;resetScore();stopAuto();};
+$('restart').onclick=()=>{resetScore();prepSection();songT=sectionStart();loopCount=0;loopScores=[];loopBase=0;stopAuto();};
 $('fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});};
 $('toggle').onclick=()=>$('panel').classList.toggle('hidden');
 $('loadTab').onclick=()=>{try{const s=parseTab($('tab').value,'Tekstikappale');if(!s.notes.length)throw 0;addCustom(s);}catch(e){alert('Tekstiä ei voitu lukea.');}};
@@ -461,7 +470,7 @@ addEventListener('pointermove',e=>{if(!drag)return;const dx=(e.clientX-drag.x)/W
  const dy=(e.clientY-drag.y)/H*100;S.kbH=Math.min(40,Math.max(3,drag.h+(S.flip?dy:-dy)));syncUI();});
 addEventListener('pointerup',()=>{if(drag){drag=null;save();}});
 const COL={R:['#3fb6ff','#2a7fe0','#1240a0'],L:['#ffa040','#e06a20','#902a10']};
-function hud(){const tot=song?song.notes.filter(active).length:0;$('hud').textContent=(song?song.name:'')+'  |  Pisteet '+score+'  Osumat '+hits+'/'+tot+'  Ohi '+misses+(combo>2?'  Kombo x'+combo:'')+(playing?'':'  ⏸ (välilyönti)');}
+function hud(){const tot=song?song.notes.filter(x=>active(x)&&!x.ghost).length:0;const lp=S.loopMode!=='off'?'  🔁 '+(loopCount+1)+(S.loopMode==='n'?'/'+S.loopN:'')+(loopScores.length?' ['+loopScores.slice(-4).join(', ')+']':''):'';$('hud').textContent=(song?song.name:'')+'  |  Pisteet '+score+'  Osumat '+hits+'/'+tot+'  Ohi '+misses+(combo>2?'  Kombo x'+combo:'')+lp+(S.loopA||S.loopB?'  A–B '+(S.loopA||1)+'–'+(S.loopB||'loppu'):'')+(playing?'':'  ⏸ (välilyönti)');}
 
 function rr(x,y,w,h,r){cx.beginPath();if(cx.roundRect)cx.roundRect(x,y,w,h,r);else cx.rect(x,y,w,h);}
 const stars=Array.from({length:150},()=>({x:Math.random(),y:Math.random(),z:Math.random()*0.9+0.1,p:Math.random()*6}));
@@ -470,6 +479,30 @@ function burst(n,c,cnt){const L=lastLayout;if(!L||!L.pos[n])return;const p=L.pos
  for(let i=0;i<m&&parts.length<600;i++){const a=(S.flip?1:-1)*(Math.random()*Math.PI);parts.push({x:p.x+p.w/2,y,vx:Math.cos(a)*(80+Math.random()*250),vy:Math.sin(a)*(150+Math.random()*350),l:0.5+Math.random()*0.6,s:2+Math.random()*3,c});}}
 function popup(t,n,c,big){const L=lastLayout;if(!L)return;const p=L.pos[n];pops.push({t,x:big?W/2:(p?p.x+p.w/2:W/2),y:big?H/3:(S.flip?L.kh+40:L.ky-30),c,l:1,big});}
 
+
+// ---- loop
+var loopCount=0,loopScores=[],loopBase=0;
+const barLen=()=>(song&&song.beat?song.beat:0.5)*4;
+const secA=()=>S.loopA?(S.loopA-1)*barLen():0;
+const secB=()=>S.loopB?S.loopB*barLen():(song&&song.notes.length?Math.max(...song.notes.map(x=>x.t+x.d)):0);
+function loopUI(){$('loopMode').value=S.loopMode;$('loopN').value=S.loopN;$('loopA').value=S.loopA||'';$('loopB').value=S.loopB||'';$('loopGap').value=S.loopGap;$('loopUp').value=S.loopUp;$('loopMax').value=S.loopMax;$('rowLoopN').style.display=S.loopMode==='n'?'':'none';}
+['loopMode','loopN','loopA','loopB','loopGap','loopUp','loopMax'].forEach(k=>$(k).addEventListener('change',e=>{const v=e.target.value;S[k]=k==='loopMode'?v:(v===''?null:+v);
+ if(S.loopA&&S.loopB&&S.loopB<S.loopA)S.loopB=S.loopA;save();loopUI();prepSection();}));
+$('setA').onclick=()=>{S.loopA=Math.max(1,Math.floor(Math.max(0,songT)/barLen())+1);save();loopUI();prepSection();};
+$('setB').onclick=()=>{S.loopB=Math.max(S.loopA||1,Math.ceil(Math.max(0,songT)/barLen()));save();loopUI();prepSection();};
+$('clrAB').onclick=()=>{S.loopA=S.loopB=null;save();loopUI();prepSection();};
+function prepSection(){if(!song)return;const a=secA(),b=secB(),ab=S.loopA||S.loopB;
+ for(const x of song.notes){const out=ab&&(x.t<a-0.01||x.t>=b-0.01);x.ghost=!!out;if(out){x.hit=true;x.miss=false;}else if(x.ghost===false&&x._wasGhost){x.hit=false;}x._wasGhost=out;}}
+function sectionStart(){return (S.loopA?secA():0)-(S.loopA?Math.max(S.loopGap,0.5)*barLen():2);}
+function loopEnd(){// called at section/song end
+ const sc=score-loopBase;loopScores.push(sc);loopBase=score;
+ const more=S.loopMode==='inf'||(S.loopMode==='n'&&loopCount+1<S.loopN);
+ if(!more||S.loopMode==='off')return false;
+ loopCount++;if(S.loopUp>0){S.tempo=Math.min(S.loopMax/100,+(S.tempo*(1+S.loopUp/100)).toFixed(3));syncUI();save();}
+ for(const x of song.notes){if(!x.ghost){x.hit=false;x.miss=false;}}stopAuto();
+ songT=(S.loopA?secA():0)-S.loopGap*barLen();
+ pops.push({t:'Kierros '+(loopCount+1)+(S.loopMode==='n'?'/'+S.loopN:'')+'  ·  edellinen '+sc+' p',x:W/2,y:H/3,c:'#8cf',l:1.6,big:true});return true;}
+loopUI();
 // ---- detection visualization
 const DETC={ok:'#3f8',bad:'#f44',free:'#3ef'};const detCol={},ripples=[],hist=[];let micViz=null;
 function detViz(n,r){const c=DETC[r]||DETC.free;detCol[n]=c;hist.push({n,c});if(hist.length>8)hist.shift();
@@ -506,7 +539,7 @@ function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;const L=layo
    if(auto&&!x.hit&&x.t<=songT){x.hit=true;noteOn(n,0.8);autoOn.add(n);if(S.mode==='listen')burst(n,(COL[x.h]||COL.R)[0],10);x.autoEnd=x.t+x.d;}
    if(S.mode==='play'&&active(x)&&!x.hit&&!x.miss&&songT>x.t+0.25*S.tempo+0.1){x.miss=true;misses++;if(combo>=10)popup('Kombo katkesi',tr(x),'#f66',true);combo=0;popup('Ohi',tr(x),'#f66');}}
   for(const x of song.notes){if(x.autoEnd!=null&&songT>=x.autoEnd){const n=tr(x);if(autoOn.has(n)){autoOn.delete(n);if(!pressed.has(n))noteOff(n);}x.autoEnd=null;}}
-  const end=song.notes.length?song.notes[song.notes.length-1].t+song.notes[song.notes.length-1].d+1:0;if(songT>end){playing=false;stopAuto();}}
+  const end=(S.loopB?secB():secB()+1);if(songT>end){if(!loopEnd()){playing=false;stopAuto();}}}
  // draw
  const FULL=S.gfx!=='lite',T=now/1000;
  if(FULL){const g=cx.createLinearGradient(0,0,0,H);const hh=(T*8)%360;g.addColorStop(0,`hsl(${230+20*Math.sin(T*0.2)},60%,9%)`);g.addColorStop(1,`hsl(${280+20*Math.sin(T*0.15)},50%,6%)`);cx.fillStyle=g;cx.fillRect(0,0,W,H);
@@ -520,7 +553,7 @@ function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;const L=layo
  if(song&&song.beat){const bt=song.beat;let k=Math.ceil(songT/bt);for(;;k++){const t=k*bt;if((t-songT)*pps>fallH)break;const y=Y(t);const bar=k%4===0;cx.fillStyle=bar?'#ffffff30':'#ffffff10';cx.fillRect(0,y,W,bar?2:1);}}
  const lit={};
  if(song){for(const x of song.notes){const n=tr(x);const p=L.pos[n];const y0=(x.t-songT)*pps;if(y0>fallH)break;const y1=(x.t+x.d-songT)*pps;if(x.t<=songT&&x.t+x.d>songT)lit[n]=x.h;if(y1<-5||!p)continue;
-  const h=Math.max(6,Math.min(y1,fallH+40)-Math.max(y0,-40));const yy=S.flip?L.kh+Math.max(y0,-40):fallH-Math.max(y0,-40)-h;const c=COL[x.h]||COL.R;
+  if(x.ghost&&(S.loopA||S.loopB))continue;const h=Math.max(6,Math.min(y1,fallH+40)-Math.max(y0,-40));const yy=S.flip?L.kh+Math.max(y0,-40):fallH-Math.max(y0,-40)-h;const c=COL[x.h]||COL.R;
   cx.globalAlpha=active(x)?1:0.35;let c1=p.b?c[1]:c[0],c2=c[2];if(x.miss){c1='#844';c2='#422';}else if(x.hit&&active(x)&&S.mode!=='listen'){c1='#6f8';c2='#2a5';}
   const r=Math.min(8,p.w/2.5);const xx=p.x+1.5,ww=p.w-3;
   if(FULL){cx.shadowColor=c1;cx.shadowBlur=18;const g=cx.createLinearGradient(xx,0,xx+ww,0);g.addColorStop(0,c2);g.addColorStop(0.5,c1);g.addColorStop(1,c2);cx.fillStyle=g;}else cx.fillStyle=c1;
@@ -529,6 +562,7 @@ function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;const L=layo
   if(S.names&&h>16&&p.w>14){cx.fillStyle='#fff';cx.font='bold '+Math.min(14,p.w*0.45)+'px sans-serif';cx.textAlign='center';cx.fillText(noteName(n).replace(/-?\d+$/,''),p.x+p.w/2,S.flip?yy+15:yy+h-5);}
   cx.globalAlpha=1;}
   const oor=song.notes.some(x=>tr(x)<L.lo||tr(x)>L.hi);if(oor){cx.fillStyle='#f88';cx.font='14px sans-serif';cx.textAlign='center';cx.fillText('Osa nuoteista on koskettimiston ulkopuolella – muuta alinta nuottia tai oktaavisiirtoa',W/2,60);}}
+ if(song&&(S.loopA||S.loopB)){for(const [t,lab] of [[secA(),'A'],[secB(),'B']]){if((t-songT)*pps>fallH||t<songT-1)continue;const y=Y(t);cx.fillStyle='#ff0a';cx.fillRect(0,y-1,W,2);cx.font='bold 14px sans-serif';cx.textAlign='left';cx.fillText(lab,6,y-4);}}
  // hit line glow
  const hy=S.flip?L.kh:L.ky;
  if(FULL){const g=cx.createLinearGradient(0,hy-14,0,hy+2);g.addColorStop(0,'#0000');g.addColorStop(1,'#8cf6');cx.fillStyle=g;cx.fillRect(L.x0,S.flip?hy:hy-14,L.kw,14);}
