@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="fi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Syntikkapeli – opi soittamaan</title>
+<style>
+html,body{margin:0;height:100%;background:#0b0d17;color:#eee;font-family:system-ui,sans-serif;overflow:hidden}
+#c{display:block;width:100vw;height:100vh}
+#panel{position:fixed;top:0;left:0;bottom:0;width:340px;background:#151a2ecc;backdrop-filter:blur(6px);padding:10px 14px;overflow-y:auto;box-sizing:border-box;transition:transform .2s;z-index:5;font-size:14px}
+#panel.hidden{transform:translateX(-100%)}
+#panel h2{margin:8px 0 4px;font-size:16px;color:#8cf}
+label{display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:6px}
+input[type=range]{width:150px}select,button,textarea{font:inherit}
+button{background:#2a3566;color:#fff;border:1px solid #4a5aa0;border-radius:5px;padding:5px 9px;margin:2px;cursor:pointer}
+button:hover{background:#3a4a8a}
+textarea{width:100%;height:90px;background:#0b0d17;color:#cfe;border:1px solid #445}
+#toggle{position:fixed;top:8px;right:8px;z-index:6}
+#hud{position:fixed;top:8px;left:50%;transform:translateX(-50%);font-size:20px;z-index:4;text-shadow:0 0 4px #000;pointer-events:none;text-align:center}
+small{color:#aab}a{color:#8cf}
+#panel{background:linear-gradient(160deg,#ffffff1a,#ffffff08);backdrop-filter:blur(16px) saturate(1.4);border-right:1px solid #ffffff30;box-shadow:8px 0 40px #0008;border-radius:0 18px 18px 0}
+#panel h2{background:linear-gradient(90deg,#7cf,#c8f);-webkit-background-clip:text;background-clip:text;color:transparent;font-size:17px;margin-top:14px}
+button,#toggle{background:linear-gradient(180deg,#5a6cff,#3a3fb0);border:1px solid #ffffff40;border-radius:10px;box-shadow:0 2px 10px #0006,inset 0 1px 0 #fff5;transition:transform .1s,box-shadow .2s}
+button:hover{transform:translateY(-1px);box-shadow:0 4px 18px #5a6cff88,inset 0 1px 0 #fff5;background:linear-gradient(180deg,#6a7cff,#4a4fd0)}
+select,textarea{background:#0006;color:#eef;border:1px solid #ffffff30;border-radius:8px;padding:3px}
+input[type=range]{accent-color:#8af}input[type=checkbox]{accent-color:#8af;width:18px;height:18px}
+#hud{background:linear-gradient(160deg,#ffffff22,#ffffff08);backdrop-filter:blur(10px);border:1px solid #ffffff30;border-radius:14px;padding:6px 18px;font-weight:600;font-size:18px}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<button id="toggle">☰ Asetukset (Esc)</button>
+<div id="panel">
+<h2>🎹 Syntikkapeli</h2>
+<div id="wiz" style="border:1px solid #8cf6;border-radius:12px;padding:6px 10px;margin:6px 0;background:#8cf1">
+<h2 style="margin-top:4px">⚡ Pika-asetus</h2>
+<small>1) Näyttö 2) Syntikka 3) Siirtymä. Mitoita ruutu ja koskettimet vastaamaan oikeaa syntikkaa. Käytä koko näyttöä (⛶).</small>
+<label>Yksikkö <select id="unit"><option value="cm">cm</option><option value="mm">mm</option></select></label>
+<label><b>1. Näytön koko</b> <select id="scrMode"><option value="diag">Lävistäjä (tuumaa)</option><option value="width">Näkyvä leveys</option></select></label>
+<label id="rowDiag">Lävistäjä ″ <input type="number" id="diag" min="10" max="120" step="0.5" style="width:70px"> <select id="aspect"><option>16:9</option><option>16:10</option><option>21:9</option><option>4:3</option></select></label>
+<label id="rowScrW">Näkyvä leveys <input type="number" id="scrW" step="0.1" style="width:80px"><span class="u"></span></label>
+<label><b>2. Syntikka</b> <select id="preset"><option value="">Valitse malli…</option><option value="ct615">Casio CT-615 (61, C2–C7, 83,5 cm)</option><option value="25">25 koskettimen (≈35 cm)</option><option value="37">37 koskettimen (≈52 cm)</option><option value="49">49 koskettimen (≈68 cm)</option><option value="61">61 koskettimen (≈85 cm)</option><option value="76">76 koskettimen (≈106 cm)</option><option value="88">88 koskettimen (≈122 cm)</option></select></label>
+<label>Koskettimiston leveys <input type="number" id="kbPhys" step="0.1" style="width:80px"><span class="u"></span></label>
+<label>Automaattinen (23,5 mm / valk. kosketin) <input type="checkbox" id="kbAuto"></label>
+<label><b>3. Siirtymä</b> vasemmasta reunasta <input type="number" id="kbOff" step="0.1" style="width:80px"><span class="u"></span></label>
+<small>Siirtymä = syntikan vasemman reunan (alimman koskettimen) etäisyys näytön vasemmasta reunasta; negatiivinen = syntikka alkaa näytön vasemmalta puolelta.</small>
+<label>Käytä fyysisiä mittoja <input type="checkbox" id="physOn"></label>
+<div id="physInfo" style="font-size:12px;color:#bdf"></div>
+<label>Kategoria <select id="catF"><option value="">Kaikki</option><option>Klassikko</option><option>Lastenlaulu</option><option>Kansanlaulu</option><option>Joululaulu</option></select></label>
+<label>Vaikeus <select id="diffF"><option value="0">Kaikki</option><option value="1">★ Helppo</option><option value="2">★★</option><option value="3">★★★</option><option value="4">★★★★</option><option value="5">★★★★★ Vaikea</option></select></label>
+<label>Järjestys <select id="sortS"><option value="diff">Vaikeuden mukaan</option><option value="name">Nimen mukaan</option><option value="cat">Kategorian mukaan</option></select></label>
+<label>Kappale <select id="song" style="max-width:200px"></select></label><small id="songInfo"></small>
+<div><button id="play">▶ Soita</button><button id="pause">⏸ Tauko</button><button id="restart">⏮ Alusta</button><button id="fs">⛶ Koko näyttö</button></div>
+<label>Tila <select id="mode"><option value="play">Soita (pisteytys)</option><option value="wait">Odotustila (odottaa oikeaa näppäintä)</option><option value="listen">Kuuntele (automaattinen)</option></select></label>
+<label>Kädet <select id="hands"><option value="both">Molemmat</option><option value="R">Oikea</option><option value="L">Vasen</option></select></label>
+<label>Toista toinen käsi automaattisesti <input type="checkbox" id="autoOther" checked></label>
+<label>Tempo <input type="range" id="tempo" min="0.25" max="2" step="0.05" value="1"><span id="tempoV"></span></label>
+<label>Putoamisnopeus <input type="range" id="fall" min="0.5" max="8" step="0.1" value="3"><span id="fallV"></span></label>
+<label>Grafiikka <select id="gfx"><option value="full">Täysi</option><option value="lite">Kevyt (hitaat laitteet)</option></select></label>
+<label>Nuottien nimet <input type="checkbox" id="names" checked></label>
+<h2>Koskettimisto</h2>
+</div>
+<label>Koskettimia <select id="keys"><option>25</option><option>37</option><option selected>49</option><option>61</option><option>76</option><option>88</option></select></label>
+<label>Alin nuotti <select id="low"></select></label>
+<label>Siirrä kappaletta (oktaavi) <select id="transp"><option value="-24">-2</option><option value="-12">-1</option><option value="0" selected>0</option><option value="12">+1</option><option value="24">+2</option></select></label>
+<h2>Hienosäätö (kalibrointi)</h2>
+<small>Laita näyttö/TV syntikan taakse/yläpuolelle ja sovita ruudun koskettimet oikeiden kohdalle. Kalibrointitilassa voit myös raahata koskettimistoa hiirellä (vaaka = siirto, Shift+raahaus = leveys).</small>
+<label>Vasen reuna % <input type="range" id="kbLeft" min="-20" max="60" step="0.1"><span id="kbLeftV"></span></label>
+<label>Leveys % <input type="range" id="kbW" min="20" max="200" step="0.1"><span id="kbWV"></span></label>
+<label>Koskettimiston korkeus % <input type="range" id="kbH" min="3" max="40" step="0.5"><span id="kbHV"></span></label>
+<label>Koskettimisto ylhäällä (nuotit nousevat) <input type="checkbox" id="flip"></label>
+<label>Kalibrointitila <input type="checkbox" id="calib"></label>
+<button id="resetCal">Palauta kalibrointi</button>
+<h2>📷 Kuvakalibrointi</h2>
+<small>1) Paina <b>Näytä kuvio</b> (koko näyttö). 2) Ota puhelimella kuva, jossa näkyy koko näyttö ja syntikka. 3) Lataa kuva. Peli etsii värilliset kulmamerkit ja koskettimiston; korjaa tarvittaessa klikkaamalla alimman koskettimen vasen reuna ja ylimmän oikea reuna.</small>
+<div><button id="patBtn">Näytä kuvio</button> <label style="display:inline">Lataa kuva <input type="file" id="photo" accept="image/*" capture="environment" style="width:170px"></label></div>
+<h2>Ääni</h2>
+<label>Aaltomuoto <select id="wave"><option value="sawtooth">Saha</option><option value="square">Kantti</option><option value="triangle">Kolmio</option><option value="sine">Sini</option></select></label>
+<label>Suodin (Hz) <input type="range" id="cut" min="200" max="12000" step="50" value="3000"><span id="cutV"></span></label>
+<label>Resonanssi <input type="range" id="res" min="0" max="20" step="0.5" value="2"><span id="resV"></span></label>
+<label>Attack <input type="range" id="att" min="0.001" max="1" step="0.001" value="0.01"><span id="attV"></span></label>
+<label>Decay <input type="range" id="dec" min="0.01" max="2" step="0.01" value="0.3"><span id="decV"></span></label>
+<label>Sustain <input type="range" id="sus" min="0" max="1" step="0.01" value="0.6"><span id="susV"></span></label>
+<label>Release <input type="range" id="rel" min="0.01" max="3" step="0.01" value="0.3"><span id="relV"></span></label>
+<label>Äänenvoimakkuus <input type="range" id="vol" min="0" max="1" step="0.01" value="0.4"><span id="volV"></span></label>
+<label>Soita ääni MIDI-syntikalla painettaessa <input type="checkbox" id="midiSound"></label>
+<h2>Syöte</h2>
+<label>Syötetapa <select id="input"><option value="midi">MIDI</option><option value="mic">Mikrofoni</option><option value="kbd">Näppäimistö</option></select></label>
+<div id="micBox"><small>🎤 Mikrofoni toimii parhaiten yksittäisillä nuoteilla. Suositus: <b>odotustila</b>. Pidä selaimen ääni pois (Äänenvoimakkuus 0 tai Kuuntele-tila pois), muuten peli kuulee omat äänensä.</small>
+<label>Herkkyys (kohinaportti) <input type="range" id="micGate" min="0.002" max="0.1" step="0.001"><span id="micGateV"></span></label>
+<label>Viiveen kompensointi ms <input type="range" id="micLat" min="0" max="400" step="10"><span id="micLatV"></span></label>
+<label>Sointutunnistus (kokeellinen) <input type="checkbox" id="micChord"></label>
+<button id="micBtn">Käynnistä mikrofoni</button><div id="micStatus"><small>Mikrofoni pois</small></div></div>
+<div style="font-size:22px;margin:4px 0">Tunnistettu: <b id="detNote">–</b></div>
+<h2>MIDI</h2>
+<div id="midiStatus"><small>MIDI: ei yhdistetty</small></div>
+<button id="midiBtn">Yhdistä MIDI-laite</button>
+<small>Tietokoneen näppäimistö: Z S X D C V G B H N J M , (alempi oktaavi), Q 2 W 3 E R 5 T 6 Y 7 U I (ylempi). Nuolet ←/→ siirtävät oktaavia.</small>
+<h2>Omat kappaleet</h2>
+<label>Lataa MIDI-tiedosto <input type="file" id="midiFile" accept=".mid,.midi"></label>
+<small>Tekstitabulatuuri: rivi <b>R:</b> oikea käsi, <b>L:</b> vasen. Nuotti = nimi+oktaavi/kesto iskuina, esim. <code>E4/1 D#4/0.5 r/1</code> (r = tauko), soinnut: <code>C3+E3+G3/2</code>. Rivi <code>BPM: 100</code> asettaa tempon.</small>
+<textarea id="tab">BPM: 100
+R: E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 E4/1.5 D4/0.5 D4/2
+L: C3+G3/4 G2+G3/4 C3+G3/4 G2+G3/4</textarea>
+<button id="loadTab">Lataa teksti</button>
+<h2>Ohje</h2>
+<details><summary style="cursor:pointer">📘 Ohje: Casio CT-615</summary><div style="font-size:12.5px"><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">Tietoa soittimesta</h3><div style="margin:2px 0 2px 4px">• Casio CT-615 (Tone Bank, n. 1990): <b>61 täysikokoista kosketinta</b>, ei kosketusherkkyyttä, 210 soundia, 20 rytmiä, 10-ääninen polyfonia, yksi kaiutin.</div><div style="margin:2px 0 2px 4px">• Alue: C–C, 5 oktaavia. Pelissä vastaa MIDI-nuotteja <b>C2–C7</b> (keski-C = C4 on 25. kosketin vasemmalta).</div><div style="margin:2px 0 2px 4px">• <b>Ei MIDI-liitäntää</b> (ei MIDI OUT -DIN-liitintä eikä USB:tä). Siksi soitettuja nuotteja ei voi lukea kaapelilla.</div><div style="margin:2px 0 2px 4px">• Koskettimiston leveys (koskettimien alue, ei koko kotelo): <b>835 mm (mitattu)</b>. Koko soittimen leveys on myyjien mukaan n. 91 cm (36″). <b>Mittaa oma soittimesi</b>: alimman C:n vasen reuna → ylimmän C:n oikea reuna.</div><div style="margin:2px 0 2px 4px">• Transponointi: en löytänyt varmaa tietoa – katso soittimen paneelista. Jos käytät transponointia, aseta se pois (0), jotta nuotit vastaavat ruutua.</div><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">1. Yhdistäminen tietokoneeseen</h3><p style="margin:3px 0">Koska MIDI:ä ei ole, vaihtoehtoja on kolme:</p><div style="margin:2px 0 2px 4px">• <b>Mikrofoni (suositus)</b>: Syöte → <i>Mikrofoni</i> → <i>Käynnistä mikrofoni</i>. Selain kysyy luvan. Peli tunnistaa soitetun nuotin äänestä.</div><div style="margin:2px 0 2px 14px">• Toimii parhaiten <b>yksittäisillä nuoteilla</b> (melodia). Sointutunnistus on kokeellinen.</div><div style="margin:2px 0 2px 14px">• Käytä <b>odotustilaa</b>: peli odottaa kunnes oikea nuotti kuuluu.</div><div style="margin:2px 0 2px 14px">• Säädä <i>Herkkyys (kohinaportti)</i>: nosta, jos taustamelu laukaisee nuotteja; laske, jos soitto ei rekisteröidy.</div><div style="margin:2px 0 2px 14px">• <i>Viiveen kompensointi</i> (n. 80–150 ms) korjaa mikrofonin ja tunnistuksen viiveen pisteytyksessä.</div><div style="margin:2px 0 2px 14px">• Parempi tulos: kytke CT-615:n <b>kuuloke-/PHONES-lähtö</b> kaapelilla tietokoneen mikrofoni- tai linjatuloon (3,5 mm tai 6,3 mm → 3,5 mm -kaapeli, tai USB-äänikortti). Silloin ympäristön melu ei häiritse.</div><div style="margin:2px 0 2px 14px">• Valitse CT-615:ssä selkeä soundi (esim. piano tai urut); efektit ja rytmit pois.</div><div style="margin:2px 0 2px 4px">• <b>Ilman tunnistusta</b>: tila <i>Kuuntele</i> (peli soittaa ja näyttää) tai <i>Odotustila</i> tietokoneen näppäimistöllä.</div><div style="margin:2px 0 2px 4px">• <b>Tietokoneen näppäimistö</b>: Syöte → <i>Näppäimistö</i>.</div><p style="margin:3px 0">(Jos myöhemmin hankit MIDI-soittimen: USB-MIDI toimii suoraan; pelkkä DIN MIDI OUT vaatii USB-MIDI-sovittimen. MIDI-kanava: peli kuuntelee kaikkia kanavia.)</p><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">2. Selain</h3><div style="margin:2px 0 2px 4px">• Käytä <b>Chromea tai Edgeä</b>. Avaa <code>index.html</code> ja salli <b>mikrofoni</b> (tai MIDI) kun selain kysyy.</div><div style="margin:2px 0 2px 4px">• Paina <b>⛶ Koko näyttö</b> – mittojen laskenta on tarkin koko näytön tilassa.</div><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">3. Sijoittelu</h3><div style="margin:2px 0 2px 4px">• Aseta näyttö/TV <b>suoraan syntikan taakse/yläpuolelle</b>, niin että ruudun alareuna on mahdollisimman lähellä koskettimia. Jos näyttö on syntikan alla (esim. pöydällä tabletti), valitse <i>Koskettimisto ylhäällä (nuotit nousevat)</i>.</div><div style="margin:2px 0 2px 4px">• Näytön ja koskettimien tulee olla samansuuntaiset, ja katso ruutua suoraan edestä.</div><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">4. Pika-asetus</h3><div style="margin:2px 0 2px 4px">• <b>Näytön koko</b>: lävistäjä tuumina + kuvasuhde (yleensä 16:9) tai mittaa näkyvän kuva-alan leveys.</div><div style="margin:2px 0 2px 4px">• <b>Syntikka</b>: valitse <i>Casio CT-615</i>. Tämä asettaa 61 kosketinta, alueen C2–C7, leveyden 83,5 cm (mitattu) ja mikrofonisyötteen. Korjaa leveys omalla mittauksellasi.</div><div style="margin:2px 0 2px 4px">• <b>Siirtymä</b>: mittaa etäisyys <b>näytön kuva-alan vasemmasta reunasta</b> syntikan <b>alimman koskettimen vasempaan reunaan</b> (negatiivinen, jos kosketin on kuvan vasemman reunan vasemmalla puolella).</div><div style="margin:2px 0 2px 4px">• Varmista, että <i>Käytä fyysisiä mittoja</i> on päällä.</div><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">5. Hienosäätö</h3><div style="margin:2px 0 2px 4px">• Avaa <i>Hienosäätö (kalibrointi)</i> → <i>Kalibrointitila</i>. Raahaa koskettimistoa (vaaka = siirto, Shift+raahaus = leveys) kunnes ruudun koskettimet ovat oikeiden kohdalla. Huom: Pika-asetuksen muuttaminen laskee arvot uudelleen.</div><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">5b. Kuvakalibrointi</h3><p style="margin:3px 0">Paina <i>Näytä kuvio</i>, ota puhelimella kuva koko näytöstä ja syntikasta suoraan edestä, lataa kuva ja tarkista sininen esikatseluviiva. Korjaa tarvittaessa klikkaamalla alimman koskettimen vasen ja ylimmän oikea reuna, sitten <i>Hyväksy</i>.</p><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">6. Suositellut ääniasetukset</h3><div style="margin:2px 0 2px 4px">• <b>Selaimen ääni pois</b>: Äänenvoimakkuus 0 – käytä CT-615:n omaa ääntä. Mikrofonia käytettäessä tämä on välttämätöntä, muuten peli kuulee omat äänensä.</div><div style="margin:2px 0 2px 4px">• <i>Toista toinen käsi automaattisesti</i> kannattaa ottaa pois mikrofonin kanssa (tai pidä äänenvoimakkuus 0).</div><div style="margin:2px 0 2px 4px">• Aloita helpoista kappaleista (★) ja hitaalla tempolla (0,5–0,7).</div><h3 style="margin:8px 0 2px;font-size:14px;color:#bdf">Lähteet</h3><div style="margin:2px 0 2px 4px">• Wikipedia: List of Casio keyboards (CT-615, 1990, 61 kosketinta, 210 soundia, ei MIDI-merkintää)</div><div style="margin:2px 0 2px 4px">• pianoandsynth.com – Casio CT615 (61 full size keys, ei kosketusherkkyyttä, 10 ääntä polyfoniaa)</div><div style="margin:2px 0 2px 4px">• Gearspace-keskustelu &quot;Who knows the Casio CT615/640?&quot; (CT-640:ssä on MIDI, CT-615:ssä ei)</div><div style="margin:2px 0 2px 4px">• WorthPoint-myynti-ilmoitus (61 kosketinta, yksi kaiutin, n. 36″ pitkä)</div></div></details>
+<h2>Ilmaista musiikkia</h2>
+<small>Tekijänoikeusvapaita (public domain) MIDI-tiedostoja ja nuotteja:<br>
+• <a href="https://www.mutopiaproject.org/" target="_blank">Mutopia Project</a> – vapaat nuotit + MIDI<br>
+• <a href="https://imslp.org/" target="_blank">IMSLP</a> – public domain -nuotit<br>
+• <a href="https://www.kunstderfuge.com/" target="_blank">Kunst der Fuge</a> – klassisen musiikin MIDI<br>
+• <a href="https://www.piano-midi.de/" target="_blank">piano-midi.de</a> (CC BY-SA)<br>
+• <a href="https://musescore.com/sheetmusic/public-domain" target="_blank">MuseScore</a> – suodata "public domain"<br>
+Tarkista aina tiedoston lisenssi.</small>
+<p><small>Asetukset tallentuvat selaimeen automaattisesti.</small></p>
+</div>
+<div id="pat" style="display:none;position:fixed;inset:0;background:#000;z-index:20"><canvas id="patC"></canvas></div>
+<div id="pc" style="display:none;position:fixed;inset:0;background:#000d;z-index:21;overflow:auto;text-align:center;color:#fff">
+<div style="padding:8px"><b>Kuvakalibrointi</b> – <span id="pcMsg"></span><br>
+<button id="pcClick">Klikkaa reunat itse</button><button id="pcOk">✔ Hyväksy</button><button id="pcCancel">✖ Peru</button></div>
+<canvas id="pcC" style="max-width:96vw;max-height:80vh;cursor:crosshair"></canvas></div><script>
+"use strict";
+const $=id=>document.getElementById(id);
+const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FI={'C':'C','C#':'C#','D':'D','D#':'D#','E':'E','F':'F','F#':'F#','G':'G','G#':'G#','A':'A','A#':'A#','B':'H'};
+const noteName=n=>FI[NN[n%12]]+(Math.floor(n/12)-1);
+const isBlack=n=>[1,3,6,8,10].includes(n%12);
+function parseNote(s){const m=/^([A-Ha-h])([#b]?)(-?\d)$/.exec(s.trim());if(!m)return null;let L=m[1].toUpperCase();if(L==='H')L='B';let v=NN.indexOf(L)+(m[2]==='#'?1:m[2]==='b'?-1:0);return v+12*(+m[3]+1);}
+// ---- tab parser: returns {name,notes:[{t,d,n,h}]} in seconds
+function parseTab(txt,name){let bpm=100;const notes=[];const pos={R:0,L:0};
+ for(const raw of txt.split(/\n/)){const line=raw.trim();if(!line||line.startsWith('#'))continue;
+  let m=/^BPM\s*:\s*([\d.]+)/i.exec(line);if(m){bpm=+m[1];continue;}
+  m=/^N\s*:(.*)$/i.exec(line);if(m){for(const tok of m[1].trim().split(/\s+/)){const [b,db,n,h]=tok.split(':');notes.push({b:+b,db:+db/0.95,n:+n,h:h||'R'});}continue;}
+  m=/^([RL])(\d*)\s*:(.*)$/i.exec(line);if(!m)continue;const h=m[1].toUpperCase(),key=h+m[2];if(pos[key]==null)pos[key]=0;m[2]=m[3];
+  for(const tok of m[2].trim().split(/\s+/)){if(!tok||tok==='|')continue;const [p,dur]=tok.split('/');const d=parseFloat(dur||'1');
+   if(p.toLowerCase()!=='r')for(const q of p.split('+')){const n=parseNote(q);if(n!=null)notes.push({b:pos[key],db:d,n,h});}
+   pos[key]+=d;}}
+ const sp=60/bpm;return{name,beat:sp,notes:notes.map(x=>({t:x.b*sp,d:x.db*sp*0.95,n:x.n,h:x.h})).sort((a,b)=>a.t-b.t)};}
+// ---- built-in public domain songs
+const SONGS=[
+["Kuutamosonaatti – alku (Beethoven)",3,`BPM: 60
+R: G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 A3/0.3333 C#4/0.3333 E4/0.3334 A3/0.3333 C#4/0.3333 E4/0.3334 A3/0.3333 D4/0.3333 F#4/0.3334 A3/0.3333 D4/0.3333 F#4/0.3334 G#3/0.3333 C4/0.3333 F#4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 D#4/0.3334 F#3/0.3333 C4/0.3333 D#4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334 G#3/0.3333 C#4/0.3333 E4/0.3334
+R2: r/15 G#4/0.75 G#4/0.25 G#4/4
+L: C#2+C#3/4 B2/4 A2/2 F#2/2 G#2/4 C#3/4`,"L. v. Beethoven, sonaatti op. 27 nro 2 (1801)","Klassikko"],
+["Preludi C-duuri BWV 846 (Bach)",3,`BPM: 70
+N: 0:2:60:L 0.25:1.75:64:L 0.5:0.25:67:R 0.75:0.25:72:R 1:0.25:76:R 1.25:0.25:67:R 1.5:0.25:72:R 1.75:0.25:76:R 2:2:60:L 2.25:1.75:64:L 2.5:0.25:67:R 2.75:0.25:72:R 3:0.25:76:R 3.25:0.25:67:R 3.5:0.25:72:R 3.75:0.25:76:R 4:2:60:L 4.25:1.75:62:L 4.5:0.25:69:R 4.75:0.25:74:R 5:0.25:77:R 5.25:0.25:69:R 5.5:0.25:74:R 5.75:0.25:77:R 6:2:60:L 6.25:1.75:62:L 6.5:0.25:69:R 6.75:0.25:74:R 7:0.25:77:R 7.25:0.25:69:R 7.5:0.25:74:R 7.75:0.25:77:R 8:2:59:L 8.25:1.75:62:L 8.5:0.25:67:R 8.75:0.25:74:R 9:0.25:77:R 9.25:0.25:67:R 9.5:0.25:74:R 9.75:0.25:77:R 10:2:59:L 10.25:1.75:62:L 10.5:0.25:67:R 10.75:0.25:74:R 11:0.25:77:R 11.25:0.25:67:R 11.5:0.25:74:R 11.75:0.25:77:R 12:2:60:L 12.25:1.75:64:L 12.5:0.25:67:R 12.75:0.25:72:R 13:0.25:76:R 13.25:0.25:67:R 13.5:0.25:72:R 13.75:0.25:76:R 14:2:60:L 14.25:1.75:64:L 14.5:0.25:67:R 14.75:0.25:72:R 15:0.25:76:R 15.25:0.25:67:R 15.5:0.25:72:R 15.75:0.25:76:R 16:2:60:L 16.25:1.75:64:L 16.5:0.25:69:R 16.75:0.25:76:R 17:0.25:81:R 17.25:0.25:69:R 17.5:0.25:76:R 17.75:0.25:81:R 18:2:60:L 18.25:1.75:64:L 18.5:0.25:69:R 18.75:0.25:76:R 19:0.25:81:R 19.25:0.25:69:R 19.5:0.25:76:R 19.75:0.25:81:R 20:2:60:L 20.25:1.75:62:L 20.5:0.25:66:R 20.75:0.25:69:R 21:0.25:74:R 21.25:0.25:66:R 21.5:0.25:69:R 21.75:0.25:74:R 22:2:60:L 22.25:1.75:62:L 22.5:0.25:66:R 22.75:0.25:69:R 23:0.25:74:R 23.25:0.25:66:R 23.5:0.25:69:R 23.75:0.25:74:R 24:2:59:L 24.25:1.75:62:L 24.5:0.25:67:R 24.75:0.25:74:R 25:0.25:79:R 25.25:0.25:67:R 25.5:0.25:74:R 25.75:0.25:79:R 26:2:59:L 26.25:1.75:62:L 26.5:0.25:67:R 26.75:0.25:74:R 27:0.25:79:R 27.25:0.25:67:R 27.5:0.25:74:R 27.75:0.25:79:R 28:2:59:L 28.25:1.75:60:L 28.5:0.25:64:R 28.75:0.25:67:R 29:0.25:72:R 29.25:0.25:64:R 29.5:0.25:67:R 29.75:0.25:72:R 30:2:59:L 30.25:1.75:60:L 30.5:0.25:64:R 30.75:0.25:67:R 31:0.25:72:R 31.25:0.25:64:R 31.5:0.25:67:R 31.75:0.25:72:R`,"J. S. Bach (1722); MIDI: Mutopia Project (public domain)","Klassikko"],
+["Gymnopédie nro 1 (Satie)",3,`BPM: 150
+N: 0:3:43:L 1:2:66:R 1:2:62:R 1:2:59:L 3:3:38:L 4:2:57:L 4:2:61:R 4:2:66:R 6:3:43:L 7:2:66:R 7:2:62:R 7:2:59:L 9:3:38:L 10:2:66:R 10:2:61:R 10:2:57:L 12:3:43:L 13:1:78:R 13:2:59:L 13:2:62:R 13:2:66:R 14:1:81:R 15:1:79:R 15:3:38:L 16:1:78:R 16:2:57:L 16:2:61:R 16:2:66:R 17:1:73:R 18:1:71:R 18:3:43:L 19:1:73:R 19:2:59:L 19:2:62:R 19:2:66:R 20:1:74:R 21:3:69:R 21:3:38:L 22:2:66:R 22:2:57:L 22:2:61:R 24:1:66:R 24:3:43:L 25:2:59:L 25:2:62:R 25:3:66:R 27:3:38:L 28:2:61:R 28:2:57:L 28:3:66:R 30:3:43:L 31:2:59:L 31:2:62:R 31:3:66:R 33:3:38:L 34:2:66:R 34:2:57:L 34:2:61:R 36:3:43:L 37:1:78:R 37:2:59:L 37:2:62:R 37:2:66:R 38:1:81:R`,"E. Satie (1888); MIDI: Mutopia Project","Klassikko"],
+["The Entertainer (Joplin)",4,`BPM: 90
+N: 0:0.25:74:R 0.25:0.25:76:R 0.5:0.25:72:R 0.5:0.25:84:R 0.75:0.5:69:R 0.75:0.5:81:R 1.25:0.25:83:R 1.25:0.25:71:R 1.5:0.5:79:R 1.5:0.5:67:R 2:0.25:74:R 2:0.25:62:R 2.25:0.25:76:R 2.25:0.25:64:R 2.5:0.25:72:R 2.5:0.25:60:R 2.75:0.5:69:R 2.75:0.5:57:L 3.25:0.25:71:R 3.25:0.25:59:L 3.5:0.5:67:R 3.5:0.5:55:L 4:0.25:62:R 4:0.25:50:L 4.25:0.25:64:R 4.25:0.25:52:L 4.5:0.25:60:R 4.5:0.25:48:L 4.75:0.5:57:L 4.75:0.5:45:L 5.25:0.25:47:L 5.25:0.25:59:L 5.5:0.25:45:L 5.5:0.25:57:L 5.75:0.25:44:L 5.75:0.25:56:L 6:0.5:43:L 6:0.5:55:L 7:0.5:79:R 7:0.5:74:R 7:0.5:67:R 7:0.5:71:R 7:0.5:43:L 7.5:0.25:62:R 7.5:0.5:59:L 7.5:0.5:55:L 7.75:0.25:63:R 8:0.25:64:R 8:0.5:48:L 8.25:0.5:72:R 8.5:0.5:55:L 8.5:0.5:52:L 8.5:0.5:60:R 8.75:0.25:64:R 9:0.5:72:R 9:0.5:55:L 9:0.5:43:L 9.5:0.25:64:R 9.5:0.5:60:R 9.5:0.5:58:L 9.5:0.5:55:L 9.75:1.5:72:R 10:0.5:53:L 10:0.5:41:L 10.5:0.5:60:R 10.5:0.5:57:L 11:0.5:52:L 11:0.5:40:L 11.25:0.25:84:R 11.25:0.25:76:R 11.25:0.25:72:R 11.5:0.25:77:R 11.5:0.25:74:R 11.5:0.5:60:R 11.5:0.5:55:L 11.75:0.25:75:R 11.75:0.25:78:R 12:0.25:76:R 12:0.25:79:R 12:0.5:43:L 12.25:0.25:84:R 12.25:0.25:76:R 12.25:0.25:72:R 12.5:0.25:74:R 12.5:0.25:77:R 12.5:0.5:55:L 12.5:0.5:60:R 12.5:0.5:52:L 12.75:0.5:79:R 12.75:0.5:76:R 13:0.5:43:L 13.25:0.25:83:R 13.25:0.25:74:R 13.25:0.25:71:R 13.5:0.5:74:R 13.5:0.5:77:R 13.5:0.5:59:L 13.5:0.5:55:L 13.5:0.5:53:L 14:1.5:84:R 14:1.5:72:R 14:1.5:76:R 14:0.5:48:L 14.5:0.5:52:L 14.5:0.5:55:L 14.5:0.5:60:R 15:0.5:60:R 15:0.5:55:L 15:0.5:52:L 15.5:0.25:62:R 15.5:0.5:59:L 15.5:0.5:55:L 15.75:0.25:63:R 16:0.25:64:R 16:0.5:48:L 16.25:0.5:72:R 16.5:0.5:52:L 16.5:0.5:55:L 16.5:0.5:60:R 16.75:0.25:64:R 17:0.5:72:R 17:0.5:55:L 17:0.5:43:L 17.5:0.25:64:R 17.5:0.5:60:R 17.5:0.5:58:L 17.5:0.5:55:L 17.75:1.75:72:R 18:0.5:53:L 18:0.5:41:L 18.5:0.5:57:L 18.5:0.5:60:R 19:0.5:52:L 19:0.5:40:L 19.5:0.25:81:R 19.5:0.25:72:R 19.5:0.25:69:R 19.5:0.5:51:L 19.5:0.5:39:L 19.75:0.25:79:R 19.75:0.25:72:R 19.75:0.25:67:R 20:0.25:78:R 20:0.25:72:R 20:0.25:66:R 20:0.5:50:L 20:0.5:38:L 20.25:0.25:81:R 20.25:0.25:69:R 20.5:0.25:84:R 20.5:0.25:72:R 20.5:0.5:50:L 20.5:0.5:57:L 20.5:0.5:54:L 20.5:0.5:60:R 20.75:0.5:76:R 21:0.5:50:L 21.25:0.25:74:R 21.5:0.25:84:R 21.5:0.25:72:R 21.5:0.5:60:R 21.5:0.5:54:L 21.5:0.5:57:L 21.75:0.25:81:R 21.75:0.25:69:R 22:1.5:74:R 22:1.5:77:R 22:0.5:59:L 22:0.5:55:L 22.5:0.5:55:L 22.5:0.5:43:L 23:0.5:57:L 23:0.5:45:L 23.5:0.25:62:R 23.5:0.5:59:L 23.5:0.5:47:L 23.75:0.25:63:R`,"S. Joplin (1902); MIDI: Mutopia Project","Klassikko"],
+["5. sinfonian aihe (Beethoven)",2,`BPM: 108
+R: r/0.5 G4/0.5 G4/0.5 G4/0.5 D#4/4 r/0.5 F4/0.5 F4/0.5 F4/0.5 D4/4
+L: r/0.5 G3/0.5 G3/0.5 G3/0.5 D#3/4 r/0.5 F3/0.5 F3/0.5 F3/0.5 D3/4`,"L. v. Beethoven (1808)","Klassikko"],
+["Kevät – Neljä vuodenaikaa (Vivaldi)",3,`BPM: 100
+R: E4/1 G#4/1 G#4/1 G#4/1 F#4/0.5 E4/0.5 B4/3 B4/0.5 A4/0.5 G#4/1 G#4/1 G#4/1 F#4/0.5 E4/0.5 B4/3 B4/0.5 A4/0.5 G#4/1 A4/0.5 B4/0.5 A4/1 G#4/1 F#4/3
+L: E3+B3/4 E3+B3/4 E3+B3/4 E3+B3/4 E3/4 B2+F#3/4`,"A. Vivaldi (1725)","Klassikko"],
+["Toccata ja fuuga d-molli – alku (Bach)",3,`BPM: 60
+R: A4/0.25 G4/0.25 A4/3.5 G4/0.25 F4/0.25 E4/0.25 D4/0.25 C#4/1 D4/3 r/1 A3/0.25 G3/0.25 A3/3.5 E3/0.5 F3/0.5 C#3/0.5 D3/3
+L: A3/0.25 G3/0.25 A3/3.5 G3/0.25 F3/0.25 E3/0.25 D3/0.25 C#3/1 D3/3 r/1 A2/0.25 G2/0.25 A2/3.5 E2/0.5 F2/0.5 C#2/0.5 D2/3`,"J. S. Bach, BWV 565","Klassikko"],
+["Sinfonia nro 40 – alku (Mozart)",3,`BPM: 120
+R: D#5/0.5 D5/0.5 D5/1 D#5/0.5 D5/0.5 D5/1 D#5/0.5 D5/0.5 D5/1 A#5/2 A#5/0.5 A5/0.5 G5/1 G5/0.5 F5/0.5 D#5/1 D#5/0.5 D5/0.5 C5/1 C5/2
+L: G2+D3/4 G2+D3/4 C3+G3/4 D2+D3/4`,"W. A. Mozart (1788)","Klassikko"],
+["Nokturno op. 9 nro 2 – alku (Chopin)",4,`BPM: 100
+R: Bb4/0.5 G5/2 F5/0.5 G5/0.5 F5/1.5 Eb5/1 Bb4/0.5 G5/1 C5/0.5 C6/1 G5/0.5 Bb5/1.5 Ab5/1 G5/0.5 F5/1.5 G5/0.5 D5/1 Eb5/3
+L: r/0.5 Eb2/0.5 G3+Bb3/0.5 G3+Bb3/0.5 Bb2/0.5 G3+Bb3/0.5 G3+Bb3/0.5 Eb2/0.5 G3+Bb3/0.5 G3+Bb3/0.5 Bb2/0.5 G3+Bb3/0.5 G3+Bb3/0.5 C3/0.5 G3+Eb4/0.5 G3+Eb4/0.5 C3/0.5 G3+Eb4/0.5 G3+Eb4/0.5 Ab2/0.5 C4+Eb4/0.5 C4+Eb4/0.5 Ab2/0.5 C4+Eb4/0.5 C4+Eb4/0.5 Bb2/0.5 F3+Ab3+D4/0.5 F3+Ab3+D4/0.5 Bb2/0.5 F3+Ab3+D4/0.5 F3+Ab3+D4/0.5 Eb2/0.5 G3+Bb3/0.5 G3+Bb3/0.5 Eb2/0.5 G3+Bb3/0.5 G3+Bb3/0.5`,"F. Chopin (1832)","Klassikko"],
+["Joutsenlampi – teema (Tšaikovski)",3,`BPM: 80
+R: F#4/4 B3/0.5 C#4/0.5 D4/0.5 E4/0.5 F#4/1.5 D4/0.5 F#4/1.5 D4/0.5 F#4/1.5 B3/0.5 D4/0.5 B3/0.5 G3/0.5 D4/0.5 B3/4
+L: B2+F#3/6 B2+D3/4 E3+G3/4 B2+F#3/4`,"P. I. Tšaikovski (1876)","Klassikko"],
+["Häämarssi – Lohengrin (Wagner)",1,`BPM: 80
+R: G3/1 C4/1.5 C4/0.5 C4/2 G3/1 D4/1.5 B3/0.5 C4/2 G3/1 C4/1.5 F4/0.5 F4/1.5 E4/0.5 D4/1.5 C4/0.5 B3/1.5 C4/0.5 D4/3
+L: r/1 C3+G3/4 G2+F3/3 C3+E3/2 C3+G3/2 F2+C3/3 G2+D3/4 G2+F3/3`,"R. Wagner (1850)","Klassikko"],
+["Wilhelm Tell – finaali (Rossini)",2,`BPM: 130
+R: G4/0.25 G4/0.25 G4/0.5 G4/0.25 G4/0.25 G4/0.5 G4/0.25 G4/0.25 C5/0.5 D5/0.5 E5/0.5 G4/0.25 G4/0.25 G4/0.5 G4/0.25 G4/0.25 G4/0.5 G4/0.25 G4/0.25 C5/0.5 E5/0.5 G5/0.5
+L: C3/0.5 G3/0.5 C3/0.5 G3/0.5 C3/0.5 G3/0.5 C3/0.5 G3/0.5 C3/0.5 G3/0.5 C3/0.5 G3/0.5 C3/0.5 G3/0.5 C3/0.5 G3/0.5`,"G. Rossini (1829)","Klassikko"],
+["Uuden maailman sinfonia – Largo (Dvořák)",2,`BPM: 60
+R: E4/1.5 G4/0.5 G4/2 E4/1.5 D4/0.5 C4/2 D4/1 E4/1 G4/1 E4/1 D4/4
+L: C3+G3/4 C3+G3/4 G2+D3/4 G2+F3/4`,"A. Dvořák (1893)","Klassikko"],
+["Kaunis sininen Tonava (Strauss)",2,`BPM: 150
+R: C4/1 C4/1 E4/1 G4/1 G4/2 G5/1 G5/1 r/1 E5/1 E5/1 r/1 C4/1 C4/1 E4/1 G4/1 G4/2 A5/1 A5/1 r/1 F5/1 F5/1 r/1
+L: r/1 C3/1 E3+G3/1 E3+G3/1 C3/1 E3+G3/1 E3+G3/1 C3/1 E3+G3/1 E3+G3/1 C3/1 E3+G3/1 E3+G3/1 G2/1 F3+B3/1 F3+B3/1 G2/1 F3+B3/1 F3+B3/1 G2/1 F3+B3/1 F3+B3/1 G2/2`,"J. Strauss II (1866)","Klassikko"],
+["Habanera – Carmen (Bizet)",3,`BPM: 100
+R: D5/1.5 C#5/0.5 C5/1 C5/0.5 B4/0.5 Bb4/1.5 A4/0.5 Ab4/1 G4/1 F4/0.5 E4/0.5 F4/0.5 E4/0.5 D4/2
+L: D2/0.75 A2/0.25 D3/0.5 A2/0.5 D2/0.75 A2/0.25 D3/0.5 A2/0.5 D2/0.75 A2/0.25 D3/0.5 A2/0.5 D2/0.75 A2/0.25 D3/0.5 A2/0.5 D2/0.75 A2/0.25 D3/0.5 A2/0.5 D2/0.75 A2/0.25 D3/0.5 A2/0.5`,"G. Bizet (1875)","Klassikko"],
+["Halleluja – Messias (Händel)",2,`BPM: 100
+R: C5/1 G4/0.75 A4/0.25 G4/1 r/1 C5/1 G4/0.75 A4/0.25 G4/1 r/1 C5/0.5 G4/0.375 A4/0.125 G4/0.5 r/0.5 C5/0.5 G4/0.375 A4/0.125 G4/0.5 r/0.5 C5/1 C5/1 C5/2
+L: C3+G3/2 G2+G3/2 C3+G3/2 G2+G3/2 C3/1 G2/1 C3/1 G2/1 C3+G3/4`,"G. F. Händel (1741)","Klassikko"],
+
+["Maijalla oli karitsa",1,`BPM: 100
+R: E4/1 D4/1 C4/1 D4/1 E4/1 E4/1 E4/2 D4/1 D4/1 D4/2 E4/1 G4/1 G4/2 E4/1 D4/1 C4/1 D4/1 E4/1 E4/1 E4/1 E4/1 D4/1 D4/1 E4/1 D4/1 C4/4
+L: C3/4 G2/4 C3/4 C3/4 C3/4 C3/4 G2/4 C3/4`,"Amerikkalainen lastenlaulu (1830)","Lastenlaulu"],
+["Hot Cross Buns",1,`BPM: 100
+R: E4/1 D4/1 C4/2 E4/1 D4/1 C4/2 C4/0.5 C4/0.5 C4/0.5 C4/0.5 D4/0.5 D4/0.5 D4/0.5 D4/0.5 E4/1 D4/1 C4/2
+L: C3/4 C3/4 C3/2 G2/2 C3/4`,"Englantilainen kansanlaulu","Lastenlaulu"],
+["Jaakko kulta",1,`BPM: 110
+R: C4/1 D4/1 E4/1 C4/1 C4/1 D4/1 E4/1 C4/1 E4/1 F4/1 G4/2 E4/1 F4/1 G4/2 G4/0.5 A4/0.5 G4/0.5 F4/0.5 E4/1 C4/1 G4/0.5 A4/0.5 G4/0.5 F4/0.5 E4/1 C4/1 C4/1 G3/1 C4/2 C4/1 G3/1 C4/2
+L: C3/4 C3/4 C3/4 C3/4 C3/4 C3/4 C3/2 G2/2 C3/4`,"Ranskalainen kansanlaulu (Frère Jacques)","Lastenlaulu"],
+["Lontoon silta",1,`BPM: 110
+R: G4/1.5 A4/0.5 G4/1 F4/1 E4/1 F4/1 G4/2 D4/1 E4/1 F4/2 E4/1 F4/1 G4/2 G4/1.5 A4/0.5 G4/1 F4/1 E4/1 F4/1 G4/2 D4/2 G4/1 E4/1 C4/4
+L: C3/4 C3/4 G2/4 C3/4 C3/4 C3/4 G2/4 C3/4`,"Englantilainen lastenlaulu","Lastenlaulu"],
+["Soudetaan (Row Row Row Your Boat)",1,`BPM: 120
+R: C4/1.5 C4/1.5 C4/1 D4/0.5 E4/1.5 E4/1 D4/0.5 E4/1 F4/0.5 G4/3 C5/0.5 C5/0.5 C5/0.5 G4/0.5 G4/0.5 G4/0.5 E4/0.5 E4/0.5 E4/0.5 C4/0.5 C4/0.5 C4/0.5 G4/1 F4/0.5 E4/1 D4/0.5 C4/3
+L: C3/3 C3/3 C3/3 C3/3 C3/3 C3/3 G2/3 C3/3`,"Amerikkalainen lastenlaulu (1852)","Lastenlaulu"],
+["Paljon onnea vaan (Happy Birthday)",2,`BPM: 100
+R: G4/0.75 G4/0.25 A4/1 G4/1 C5/1 B4/2 G4/0.75 G4/0.25 A4/1 G4/1 D5/1 C5/2 G4/0.75 G4/0.25 G5/1 E5/1 C5/1 B4/1 A4/2 F5/0.75 F5/0.25 E5/1 C5/1 D5/1 C5/3
+L: r/1 C3/3 G2/3 G2/3 C3/3 C3/3 F2/3 C3/2 G2/1 C3/4`,"Hill-sisarukset; public domain (oikeuden päätös 2016)","Lastenlaulu"],
+["Old MacDonald",2,`BPM: 120
+R: C4/1 C4/1 C4/1 G3/1 A3/1 A3/1 G3/2 E4/1 E4/1 D4/1 D4/1 C4/3 G3/1 C4/1 C4/1 C4/1 G3/1 A3/1 A3/1 G3/2 E4/1 E4/1 D4/1 D4/1 C4/4
+L: C3/2 C3/2 F2/2 C3/2 C3/2 G2/2 C3/4 C3/2 C3/2 F2/2 C3/2 C3/2 G2/2 C3/4`,"Amerikkalainen kansanlaulu","Kansanlaulu"],
+["When the Saints Go Marching In",2,`BPM: 140
+R: C4/1 E4/1 F4/1 G4/5 C4/1 E4/1 F4/1 G4/5 C4/1 E4/1 F4/1 G4/2 E4/2 C4/2 E4/2 D4/6 E4/1 E4/1 D4/1 C4/3 C4/1 E4/2 G4/2 G4/1 F4/5 E4/1 F4/1 G4/2 E4/2 C4/2 D4/2 C4/4`,"Amerikkalainen spirituaali","Kansanlaulu"],
+["Amazing Grace",2,`BPM: 90
+R: G3/1 C4/2 E4/0.5 C4/0.5 E4/2 D4/1 C4/2 A3/1 G3/2 G3/1 C4/2 E4/0.5 C4/0.5 E4/2 D4/1 G4/3 G4/2 E4/1 G4/1.5 E4/0.5 G4/0.5 E4/0.5 C4/2 G3/1 A3/1.5 C4/0.5 C4/0.5 A3/0.5 G3/2 G3/1 C4/2 E4/0.5 C4/0.5 E4/2 D4/1 C4/3`,"J. Newton (1779), perinteinen sävelmä","Kansanlaulu"],
+["Jouluyö, juhlayö (Silent Night)",2,`BPM: 100
+R: G4/1.5 A4/0.5 G4/1 E4/3 G4/1.5 A4/0.5 G4/1 E4/3 D5/2 D5/1 B4/3 C5/2 C5/1 G4/3 A4/2 A4/1 C5/1.5 B4/0.5 A4/1 G4/1.5 A4/0.5 G4/1 E4/3 A4/2 A4/1 C5/1.5 B4/0.5 A4/1 G4/1.5 A4/0.5 G4/1 E4/3 D5/2 D5/1 F5/1.5 D5/0.5 B4/1 C5/3 E5/3 C5/1 G4/1 E4/1 G4/1.5 F4/0.5 D4/1 C4/6`,"F. X. Gruber (1818)","Joululaulu"],
+["Brahmsin kehtolaulu",3,`BPM: 90
+R: E4/0.5 E4/0.5 G4/2 E4/0.5 E4/0.5 G4/2 E4/0.5 G4/0.5 C5/1 B4/1.5 A4/0.5 A4/1 G4/1 D4/0.5 E4/0.5 F4/1 D4/1 D4/0.5 E4/0.5 F4/2 D4/0.5 F4/0.5 B4/0.5 A4/0.5 G4/1 B4/1 C5/2`,"J. Brahms (1868)","Klassikko"],
+["Menuetti G-duuri (Petzold/Bach)",3,`BPM: 110
+R: D5/1 G4/0.5 A4/0.5 B4/0.5 C5/0.5 D5/1 G4/1 G4/1 E5/1 C5/0.5 D5/0.5 E5/0.5 F#5/0.5 G5/1 G4/1 G4/1 C5/1 D5/0.5 C5/0.5 B4/0.5 A4/0.5 B4/1 C5/0.5 B4/0.5 A4/0.5 G4/0.5 F#4/1 G4/0.5 A4/0.5 B4/0.5 G4/0.5 A4/3
+L: G3+B3/3 B3/3 C4/3 B3/3 A3/3 G3/3 D3/3 D3+F#3/3`,"C. Petzold, Anna Magdalena Bachin nuottikirja (1725)","Klassikko"],
+["Vuorenpeikkojen luolassa (Grieg)",3,`BPM: 120
+R: A3/0.5 B3/0.5 C4/0.5 D4/0.5 E4/0.5 C4/0.5 E4/1 D#4/0.5 B3/0.5 D#4/1 D4/0.5 A#3/0.5 D4/1 A3/0.5 B3/0.5 C4/0.5 D4/0.5 E4/0.5 C4/0.5 E4/0.5 A4/0.5 G4/0.5 E4/0.5 C4/0.5 E4/0.5 G4/2
+L: A2/4 B2/2 A#2/2 A2/4 E2/2 A2/2`,"E. Grieg, Peer Gynt (1875)","Klassikko"],
+["Aamutunnelma (Grieg)",3,`BPM: 90
+R: G4/0.5 E4/0.5 D4/0.5 C4/0.5 D4/0.5 E4/0.5 G4/0.5 E4/0.5 D4/0.5 C4/0.5 D4/0.5 E4/0.25 D4/0.25 E4/0.5 G4/0.5 E4/0.5 G4/0.5 A4/0.5 E4/0.5 A4/0.5 G4/0.5 E4/0.5 D4/0.5 C4/1
+L: C3+G3/3 C3+G3/3 A2+E3/3 C3+G3/3`,"E. Grieg, Peer Gynt (1875)","Klassikko"],
+["Eine kleine Nachtmusik – alku (Mozart)",3,`BPM: 120
+R: G4/1 D4/0.5 G4/1 D4/0.5 G4/0.5 D4/0.5 G4/0.5 B4/0.5 D5/2 C5/1 A4/0.5 C5/1 A4/0.5 C5/0.5 A4/0.5 F#4/0.5 A4/0.5 D4/2
+L: G2+G3/4 G2+G3/2 D3+F#3/4 D3+F#3/2 D3+F#3/2`,"W. A. Mozart (1787)","Klassikko"],
+["Can-can (Offenbach)",4,`BPM: 150
+R: C4/2 D4/0.5 F4/0.5 E4/0.5 D4/0.5 G4/1 G4/1 G4/0.5 A4/0.5 E4/0.5 F4/0.5 D4/1 D4/1 D4/0.5 F4/0.5 E4/0.5 D4/0.5 C4/0.5 C5/0.5 B4/0.5 A4/0.5 G4/0.5 F4/0.5 E4/0.5 D4/0.5 C4/2
+L: C3/1 G3/1 C3/1 G3/1 C3/1 G3/1 C3/1 G3/1 G2/1 G3/1 G2/1 G3/1 G2/1 G3/1 C3/2 C3/2`,"J. Offenbach, Orfeus manalassa (1858)","Klassikko"],
+["Turkkilainen marssi – alku (Mozart)",5,`BPM: 110
+R: B4/0.25 A4/0.25 G#4/0.25 A4/0.25 C5/1 D5/0.25 C5/0.25 B4/0.25 C5/0.25 E5/1 F5/0.25 E5/0.25 D#5/0.25 E5/0.25 B5/0.25 A5/0.25 G#5/0.25 A5/0.25 B5/0.25 A5/0.25 G#5/0.25 A5/0.25 C6/2
+L: r/0.5 A2/0.5 C3+E3/0.5 C3+E3/0.5 C3+E3/0.5 A2/0.5 C3+E3/0.5 C3+E3/0.5 C3+E3/0.5 A2/0.5 C3+E3/0.5 A2/0.5 C3+E3/0.5 A2/0.5 C3+E3/0.5 E2+E3/1.5`,"W. A. Mozart, sonaatti KV 331 (1783)","Klassikko"],
+
+["Oodi ilolle (Beethoven)",2,`BPM: 110
+R: E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 E4/1.5 D4/0.5 D4/2 E4/1 E4/1 F4/1 G4/1 G4/1 F4/1 E4/1 D4/1 C4/1 C4/1 D4/1 E4/1 D4/1.5 C4/0.5 C4/2
+L: C3/4 G2/4 C3/4 G2/2 G2/2 C3/4 G2/4 C3/4 G2/2 C3/2`,"Beethoven, 9. sinfonia (1824)","Klassikko"],
+["Tuiki tuiki tähtönen",1,`BPM: 100
+R: C4/1 C4/1 G4/1 G4/1 A4/1 A4/1 G4/2 F4/1 F4/1 E4/1 E4/1 D4/1 D4/1 C4/2 G4/1 G4/1 F4/1 F4/1 E4/1 E4/1 D4/2 G4/1 G4/1 F4/1 F4/1 E4/1 E4/1 D4/2 C4/1 C4/1 G4/1 G4/1 A4/1 A4/1 G4/2 F4/1 F4/1 E4/1 E4/1 D4/1 D4/1 C4/2
+L: C3/4 F3/2 C3/2 F3/2 C3/2 G2/2 C3/2 C3/2 G2/2 C3/2 G2/2 C3/2 G2/2 C3/4 F3/2 C3/2 F3/2 C3/2 G2/2 C3/2 C3/4`,"Ranskalainen kansansävelmä","Lastenlaulu"],
+["Für Elise – alku (Beethoven)",4,`BPM: 140
+R: E5/0.5 D#5/0.5 E5/0.5 D#5/0.5 E5/0.5 B4/0.5 D5/0.5 C5/0.5 A4/1.5 C4/0.5 E4/0.5 A4/0.5 B4/1.5 E4/0.5 G#4/0.5 B4/0.5 C5/1.5 E4/0.5 E5/0.5 D#5/0.5 E5/0.5 D#5/0.5 E5/0.5 B4/0.5 D5/0.5 C5/0.5 A4/1.5 C4/0.5 E4/0.5 A4/0.5 B4/1.5 E4/0.5 C5/0.5 B4/0.5 A4/2
+L: r/4 A2/0.5 E3/0.5 A3/0.5 r/1.5 E2/0.5 E3/0.5 G#3/0.5 r/1.5 A2/0.5 E3/0.5 A3/0.5 r/1.5 r/3 A2/0.5 E3/0.5 A3/0.5 r/1.5 E2/0.5 E3/0.5 G#3/0.5 r/1.5 A2/0.5 E3/0.5 A3/1`,"Beethoven (1810)","Klassikko"],
+["Kulkuset (Jingle Bells)",2,`BPM: 130
+R: E4/1 E4/1 E4/2 E4/1 E4/1 E4/2 E4/1 G4/1 C4/1.5 D4/0.5 E4/4 F4/1 F4/1 F4/1.5 F4/0.5 F4/1 E4/1 E4/1 E4/0.5 E4/0.5 E4/1 D4/1 D4/1 E4/1 D4/2 G4/2
+L: C3/4 C3/4 C3/4 C3/4 F3/4 C3/4 G2/4 G2/4`,"J. Pierpont (1857)","Joululaulu"],
+["Korobeiniki (venäläinen kansansävelmä)",3,`BPM: 140
+R: E5/1 B4/0.5 C5/0.5 D5/1 C5/0.5 B4/0.5 A4/1 A4/0.5 C5/0.5 E5/1 D5/0.5 C5/0.5 B4/1.5 C5/0.5 D5/1 E5/1 C5/1 A4/1 A4/2 r/0.5 D5/1 F5/0.5 A5/1 G5/0.5 F5/0.5 E5/1.5 C5/0.5 E5/1 D5/0.5 C5/0.5 B4/1 B4/0.5 C5/0.5 D5/1 E5/1 C5/1 A4/1 A4/2
+L: E2/0.5 E3/0.5 E2/0.5 E3/0.5 E2/0.5 E3/0.5 E2/0.5 E3/0.5 A2/0.5 A3/0.5 A2/0.5 A3/0.5 A2/0.5 A3/0.5 A2/0.5 A3/0.5 G#2/0.5 G#3/0.5 G#2/0.5 G#3/0.5 E2/0.5 E3/0.5 E2/0.5 E3/0.5 A2/0.5 A3/0.5 A2/0.5 A3/0.5 A2/2 r/0.5 D2/0.5 D3/0.5 D2/0.5 D3/0.5 D2/0.5 D3/0.5 D2/0.5 D3/0.5 C2/0.5 C3/0.5 C2/0.5 C3/0.5 C2/0.5 C3/0.5 C2/0.5 C3/0.5 B2/0.5 B3/0.5 B2/0.5 B3/0.5 E2/0.5 E3/0.5 E2/0.5 E3/0.5 A2/0.5 A3/0.5 A2/0.5 A3/0.5 A2/2`,"Venäläinen kansansävelmä","Kansanlaulu"],
+["Greensleeves (perinteinen)",3,`BPM: 150
+R: A4/1 C5/2 D5/1 E5/1.5 F5/0.5 E5/1 D5/2 B4/1 G4/1.5 A4/0.5 B4/1 C5/2 A4/1 A4/1.5 G#4/0.5 A4/1 B4/2 G#4/1 E4/2 A4/1 C5/2 D5/1 E5/1.5 F5/0.5 E5/1 D5/2 B4/1 G4/1.5 A4/0.5 B4/1 C5/1.5 B4/0.5 A4/1 G#4/1.5 F#4/0.5 G#4/1 A4/3
+L: r/1 A2+E3/3 C3+G3/3 G2+D3/3 E2+B2/3 A2+E3/3 F2+C3/3 E2+B2/3 E2+B2/3 A2+E3/3 C3+G3/3 G2+D3/3 E2+B2/3 A2+E3/3 E2+B2/3 A2+E3/3`,"Englantilainen kansansävelmä, 1500-l.","Kansanlaulu"],
+["Kaanon D-duuri – teema (Pachelbel)",3,`BPM: 70
+R: F#5/2 E5/2 D5/2 C#5/2 B4/2 A4/2 B4/2 C#5/2 D5/1 C#5/1 B4/1 A4/1 G4/1 F#4/1 G4/1 E4/1 D4/0.5 F#4/0.5 A4/0.5 G4/0.5 F#4/0.5 D4/0.5 F#4/0.5 E4/0.5 D4/0.5 B3/0.5 D4/0.5 A4/0.5 G4/0.5 B4/0.5 A4/0.5 G4/0.5
+L: D3/2 A2/2 B2/2 F#2/2 G2/2 D2/2 G2/2 A2/2 D3/2 A2/2 B2/2 F#2/2 G2/2 D2/2 G2/2 A2/2`,"J. Pachelbel (n. 1680)","Klassikko"],
+["Ukko Nooa (kansanlaulu)",1,`BPM: 110
+R: C4/1 C4/1 C4/1 E4/1 D4/1 D4/1 D4/1 F4/1 E4/1 E4/1 D4/1 D4/1 C4/4 E4/1 E4/1 E4/1 E4/1 G4/2 F4/2 D4/1 D4/1 D4/1 D4/1 F4/2 E4/2
+L: C3/4 G2/4 C3/2 G2/2 C3/4 C3/4 C3/4 G2/4 C3/4`,"Suomalainen kansanlaulu","Lastenlaulu"],
+];
+// ---- SMF parser
+function parseMidi(buf,name){const d=new DataView(buf);let p=0;const str=n=>{let s='';for(let i=0;i<n;i++)s+=String.fromCharCode(d.getUint8(p+i));p+=n;return s;};
+ const u32=()=>{const v=d.getUint32(p);p+=4;return v},u16=()=>{const v=d.getUint16(p);p+=2;return v};
+ const vlq=()=>{let v=0,b;do{b=d.getUint8(p++);v=(v<<7)|(b&127)}while(b&128);return v;};
+ if(str(4)!=='MThd')throw new Error('Ei MIDI-tiedosto');const hl=u32();u16();const nt=u16();const div=u16();p=8+hl;
+ const tempos=[{tick:0,us:500000}];const raw=[];
+ for(let t=0;t<nt&&p<d.byteLength;t++){const id=str(4),len=u32(),end=p+len;if(id!=='MTrk'){p=end;continue;}
+  let tick=0,run=0;const open={};
+  while(p<end){tick+=vlq();let st=d.getUint8(p);if(st&128)p++;else st=run;
+   if(st===0xFF){const ty=d.getUint8(p++);const l=vlq();if(ty===0x51)tempos.push({tick,us:(d.getUint8(p)<<16)|(d.getUint8(p+1)<<8)|d.getUint8(p+2)});p+=l;continue;}
+   if(st===0xF0||st===0xF7){p+=vlq();continue;}
+   run=st;const ty=st&0xF0,ch=st&15;
+   if(ty===0x90||ty===0x80){const n=d.getUint8(p++),v=d.getUint8(p++);const k=ch*128+n;
+    if(ty===0x90&&v>0){(open[k]=open[k]||[]).push(tick);}else if(open[k]&&open[k].length){const s=open[k].shift();if(ch!==9)raw.push({s,e:tick,n,tr:t,ch});}}
+   else if(ty===0xC0||ty===0xD0)p++;else p+=2;}
+  p=end;}
+ tempos.sort((a,b)=>a.tick-b.tick);
+ const toSec=tk=>{let s=0,lt=0,us=500000;for(const x of tempos){if(x.tick>tk)break;s+=(x.tick-lt)*us/div/1e6;lt=x.tick;us=x.us;}return s+(tk-lt)*us/div/1e6;};
+ // hands: tracks with notes; if >=2 tracks, first = R, others L; else split at middle C
+ const trs=[...new Set(raw.map(r=>r.tr))];
+ const notes=raw.map(r=>({t:toSec(r.s),d:Math.max(0.05,toSec(r.e)-toSec(r.s)),n:r.n,h:trs.length>=2?(r.tr===trs[0]?'R':'L'):(r.n>=60?'R':'L')}));
+ notes.sort((a,b)=>a.t-b.t);const t0=notes.length?notes[0].t:0;notes.forEach(x=>x.t-=t0);return{name,notes,beat:(tempos.find(x=>x.tick===0&&x.us!==500000)||tempos[tempos.length>1?1:0]).us/1e6};}
+// ---- settings
+const DEF={keys:49,low:36,kbLeft:0,kbW:100,kbH:18,flip:false,wave:'sawtooth',cut:3000,res:2,att:0.01,dec:0.3,sus:0.6,rel:0.3,vol:0.4,tempo:1,fall:3,mode:'play',hands:'both',autoOther:true,names:true,midiSound:false,transp:0,gfx:'full',input:'midi',micGate:0.01,micLat:100,micChord:false,unit:'cm',scrMode:'diag',diag:55,aspect:'16:9',scrWmm:1218,kbPhysMm:682,kbAuto:true,kbOffMm:270,physOn:false};
+let S=Object.assign({},DEF,JSON.parse(localStorage.getItem('syntikkapeli')||'{}'));
+const save=()=>localStorage.setItem('syntikkapeli',JSON.stringify(S));
+for(let n=21;n<=72;n++){const o=document.createElement('option');o.value=n;o.textContent=noteName(n);$('low').appendChild(o);}
+const numIds=['micGate','micLat','kbLeft','kbW','kbH','cut','res','att','dec','sus','rel','vol','tempo','fall'];
+function syncUI(){for(const k of numIds){$(k).value=S[k];const v=$(k+'V');if(v)v.textContent=(+S[k]).toFixed(k==='cut'?0:2).replace(/\.?0+$/,'');}
+ $('keys').value=S.keys;$('low').value=S.low;$('flip').checked=S.flip;$('wave').value=S.wave;$('mode').value=S.mode;$('hands').value=S.hands;$('autoOther').checked=S.autoOther;$('names').checked=S.names;$('midiSound').checked=S.midiSound;$('micChord').checked=S.micChord;$('transp').value=S.transp;$('gfx').value=S.gfx;}
+numIds.forEach(k=>$(k).addEventListener('input',e=>{S[k]=+e.target.value;syncUI();save();}));
+['keys','low','transp'].forEach(k=>$(k).addEventListener('change',e=>{S[k]=+e.target.value;if(k==='keys')S.low=({25:48,37:48,49:36,61:36,76:28,88:21})[S.keys];syncUI();save();}));
+['wave','mode','hands','gfx'].forEach(k=>$(k).addEventListener('change',e=>{S[k]=e.target.value;save();resetScore();}));
+['flip','autoOther','names','midiSound','micChord'].forEach(k=>$(k).addEventListener('change',e=>{S[k]=e.target.checked;save();}));
+$('resetCal').onclick=()=>{S.kbLeft=0;S.kbW=100;S.kbH=18;S.flip=false;syncUI();save();};
+
+// ---- physical sizing
+const WH=[0,0];function whites(k,lo){let w=0;for(let n=lo;n<lo+k;n++)if(!isBlack(n))w++;return w;}
+function scrMM(){if(S.scrMode==='width')return S.scrWmm;const [a,b]=S.aspect.split(':').map(Number);return S.diag*25.4*a/Math.hypot(a,b);}
+function kbMM(){return S.kbAuto?whites(S.keys,S.low)*23.5:S.kbPhysMm;}
+const U=()=>S.unit==='cm'?10:1;
+function physUI(){$('unit').value=S.unit;$('scrMode').value=S.scrMode;$('diag').value=S.diag;$('aspect').value=S.aspect;
+ $('scrW').value=+(S.scrWmm/U()).toFixed(1);$('kbPhys').value=+(kbMM()/U()).toFixed(1);$('kbOff').value=+(S.kbOffMm/U()).toFixed(1);
+ $('kbAuto').checked=S.kbAuto;$('kbPhys').disabled=S.kbAuto;$('physOn').checked=S.physOn;document.querySelectorAll('#wiz .u').forEach(e=>e.textContent=S.unit);
+ $('rowDiag').style.display=S.scrMode==='diag'?'':'none';$('rowScrW').style.display=S.scrMode==='width'?'':'none';
+ const sm=scrMM();$('physInfo').textContent='Näytön leveys '+(sm/10).toFixed(1)+' cm · '+(innerWidth/sm).toFixed(2)+' px/mm · koskettimisto '+(kbMM()/10).toFixed(1)+' cm'+(document.fullscreenElement?'':' (tarkin koko näytön tilassa)');}
+function applyPhys(){if(!S.physOn)return;const sm=scrMM();if(!(sm>0))return;S.kbLeft=S.kbOffMm/sm*100;S.kbW=kbMM()/sm*100;syncUI();save();}
+function physChange(){S.unit=$('unit').value;S.scrMode=$('scrMode').value;S.diag=+$('diag').value||S.diag;S.aspect=$('aspect').value;S.kbAuto=$('kbAuto').checked;S.physOn=$('physOn').checked;applyPhys();save();physUI();}
+['unit','scrMode','aspect','kbAuto','physOn'].forEach(k=>$(k).addEventListener('change',physChange));
+$('diag').addEventListener('input',physChange);
+$('scrW').addEventListener('input',()=>{const v=+$('scrW').value;if(v>0){S.scrWmm=v*U();applyPhys();save();physUI();}});
+$('kbPhys').addEventListener('input',()=>{const v=+$('kbPhys').value;if(v>0){S.kbPhysMm=v*U();applyPhys();save();physUI();}});
+$('kbOff').addEventListener('input',()=>{const v=parseFloat($('kbOff').value);if(!isNaN(v)){S.kbOffMm=v*U();applyPhys();save();physUI();}});
+$('preset').addEventListener('change',e=>{if(e.target.value==='ct615'){S.keys=61;S.low=36;S.kbAuto=false;S.kbPhysMm=835;S.physOn=true;S.input='mic';syncUI();applyPhys();save();physUI();inputUI();return;}const k=+e.target.value;if(!k)return;S.keys=k;S.low=({25:48,37:48,49:36,61:36,76:28,88:21})[k];S.kbAuto=true;S.physOn=true;syncUI();applyPhys();save();physUI();});
+['keys','low'].forEach(k=>$(k).addEventListener('change',()=>{applyPhys();physUI();}));
+addEventListener('resize',physUI);document.addEventListener('fullscreenchange',physUI);
+physUI();applyPhys();
+syncUI();
+// ---- audio
+let ac=null,master,filt;const voices={};
+function audio(){if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();master=ac.createGain();master.connect(ac.destination);}if(ac.state==='suspended')ac.resume();return ac;}
+function noteOn(n,vel=1){audio();noteOff(n,true);const t=ac.currentTime;const o=ac.createOscillator(),g=ac.createGain(),f=ac.createBiquadFilter();
+ o.type=S.wave;o.frequency.value=440*Math.pow(2,(n-69)/12);f.type='lowpass';f.frequency.value=S.cut;f.Q.value=S.res;
+ const pk=S.vol*vel*0.5;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(pk,t+S.att);g.gain.linearRampToValueAtTime(pk*S.sus,t+S.att+S.dec);
+ o.connect(f);f.connect(g);g.connect(master);o.start(t);voices[n]={o,g};}
+function noteOff(n,fast){const v=voices[n];if(!v)return;const t=ac.currentTime,r=fast?0.01:S.rel;v.g.gain.cancelScheduledValues(t);v.g.gain.setValueAtTime(v.g.gain.value,t);v.g.gain.linearRampToValueAtTime(0,t+r);v.o.stop(t+r+0.05);delete voices[n];}
+// ---- game state
+let song=null,songT=-2,playing=false,score=0,hits=0,misses=0,combo=0,flash={};const pressed=new Set();const autoOn=new Set();
+const STARS=d=>'★'.repeat(d)+'☆'.repeat(5-d);
+function buildList(){const sel=$('song'),cur=sel.value,f=+$('diffF').value,so=$('sortS').value;sel.innerHTML='';
+ let idx=SONGS.map((x,i)=>i).filter(i=>(!f||SONGS[i][1]===f)&&(!$('catF').value||SONGS[i][4]===$('catF').value));
+ if(so==='diff')idx.sort((a,b)=>SONGS[a][1]-SONGS[b][1]||SONGS[a][0].localeCompare(SONGS[b][0],'fi'));else if(so==='cat')idx.sort((a,b)=>SONGS[a][4].localeCompare(SONGS[b][4],'fi')||SONGS[a][1]-SONGS[b][1]);else if(so==='name')idx.sort((a,b)=>SONGS[a][0].localeCompare(SONGS[b][0],'fi'));
+ for(const i of idx){const o=document.createElement('option');o.value=i;o.textContent=STARS(SONGS[i][1])+'  '+SONGS[i][0];sel.appendChild(o);}
+ if(customSong){const o=document.createElement('option');o.value=-1;o.textContent='Oma: '+customSong.name;sel.appendChild(o);}
+ if([...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function songInfo(){const i=+$('song').value;$('songInfo').textContent=i>=0?'Vaikeus '+STARS(SONGS[i][1])+' · '+SONGS[i][4]+' · Lähde: '+SONGS[i][3]+' (public domain)':'';}
+function loadSong(s){song=s;s.notes.forEach(x=>{x.hit=false;x.miss=false;});songT=-2;playing=false;resetScore();stopAuto();
+ if(![...$('song').options].some(o=>o.textContent===s.name&&o.value>=0)){}hud();}
+function resetScore(){score=hits=misses=combo=0;if(song)song.notes.forEach(x=>{x.hit=x.miss=false;});}
+function stopAuto(){autoOn.forEach(n=>{if(ac)noteOff(n)});autoOn.clear();}
+$('song').onchange=e=>{const i=+e.target.value;songInfo();if(i>=0)loadSong(parseTab(SONGS[i][2],SONGS[i][0]));else if(customSong)loadSong(customSong);};
+let customSong=null;$('catF').onchange=$('diffF').onchange=$('sortS').onchange=()=>{buildList();$('song').onchange({target:$('song')});};buildList();
+function addCustom(s){customSong=s;buildList();let o=$('song').querySelector('option[value="-1"]');if(!o){o=document.createElement('option');o.value=-1;$('song').appendChild(o);}o.textContent='Oma: '+s.name;$('song').value=-1;loadSong(s);}
+$('play').onclick=()=>{audio();playing=true;};$('pause').onclick=()=>{playing=false;stopAuto();};
+$('restart').onclick=()=>{songT=-2;resetScore();stopAuto();};
+$('fs').onclick=()=>{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});};
+$('toggle').onclick=()=>$('panel').classList.toggle('hidden');
+$('loadTab').onclick=()=>{try{const s=parseTab($('tab').value,'Tekstikappale');if(!s.notes.length)throw 0;addCustom(s);}catch(e){alert('Tekstiä ei voitu lukea.');}};
+$('midiFile').onchange=e=>{const f=e.target.files[0];if(!f)return;f.arrayBuffer().then(b=>{try{const s=parseMidi(b,f.name);if(!s.notes.length)throw new Error('Ei nuotteja');addCustom(s);}catch(er){alert('MIDI-virhe: '+er.message);}});};
+const tr=x=>x.n+S.transp;
+const active=x=>S.hands==='both'||x.h===S.hands;
+// ---- input
+function userOn(n,fromMidi,lat=0){pressed.add(n);$('detNote').textContent=noteName(n);if(!fromMidi||S.midiSound)noteOn(n);
+ if(!song||S.mode==='listen')return;const win=0.25*S.tempo+0.1;let best=null;
+ for(const x of song.notes){if(x.hit||x.miss||!active(x)||tr(x)!==n)continue;const st=songT-lat*S.tempo;const dt=Math.abs(x.t-st);if(dt<win&&(!best||dt<Math.abs(best.t-st)))best=x;if(x.t>songT+win)break;}
+ if(best){best.hit=true;hits++;combo++;score+=100+Math.min(combo,50)*10;flash[n]={c:'#5f5',t:performance.now()};const q=Math.abs(best.t-(songT-lat*S.tempo));burst(n,q<0.08?'#ffe066':'#7f9',24);popup(q<0.08?'Täydellinen!':'Hyvä',n,q<0.08?'#ffe066':'#7f9');if(combo>0&&combo%10===0)popup('Kombo x'+combo+'!',n,'#f6f',true);}
+ else if(S.mode==='play'){combo=0;flash[n]={c:'#f55',t:performance.now()};}}
+function userOff(n){pressed.delete(n);if(voices[n]&&!autoOn.has(n))noteOff(n);}
+const KMAP='zsxdcvgbhnjm,l.;/';const KMAP2='q2w3er5t6y7ui9o0p';let kOct=48;
+addEventListener('keydown',e=>{if(e.target.tagName==='TEXTAREA'||e.target.tagName==='INPUT'&&e.target.type!=='range'&&e.target.type!=='checkbox')return;
+ if(e.key==='Escape'){$('panel').classList.toggle('hidden');return;}
+ if(e.key===' '){e.preventDefault();playing=!playing;if(playing)audio();else stopAuto();return;}
+ if(e.key==='ArrowLeft'){kOct=Math.max(12,kOct-12);return;}if(e.key==='ArrowRight'){kOct=Math.min(96,kOct+12);return;}
+ if(e.repeat)return;const k=e.key.toLowerCase();let i=KMAP.indexOf(k),n=null;if(i>=0)n=kOct+i;else{i=KMAP2.indexOf(k);if(i>=0)n=kOct+12+i;}
+ if(n!=null){userOn(n,false);}});
+addEventListener('keyup',e=>{const k=e.key.toLowerCase();let i=KMAP.indexOf(k),n=null;if(i>=0)n=kOct+i;else{i=KMAP2.indexOf(k);if(i>=0)n=kOct+12+i;}if(n!=null)userOff(n);});
+function midiMsg(e){const [st,n,v]=e.data;const ty=st&0xF0;if(ty===0x90&&v>0)userOn(n,true);else if(ty===0x80||ty===0x90)userOff(n);}
+function initMidi(){if(!navigator.requestMIDIAccess){$('midiStatus').innerHTML='<small>Selain ei tue Web MIDIä (käytä Chromea/Edgeä).</small>';return;}
+ navigator.requestMIDIAccess().then(acc=>{const upd=()=>{const ins=[...acc.inputs.values()];ins.forEach(i=>i.onmidimessage=midiMsg);
+  $('midiStatus').innerHTML='<small>MIDI: '+(ins.length?ins.map(i=>'✅ '+i.name).join(', '):'ei laitteita – kytke syntikka USB:llä')+'</small>';};upd();acc.onstatechange=upd;})
+ .catch(()=>{$('midiStatus').innerHTML='<small>MIDI-lupa evätty.</small>';});}
+$('midiBtn').onclick=initMidi;initMidi();
+// ---- photo calibration
+const PAT={};const MC=[['red',[255,0,0]],['green',[0,255,0]],['blue',[0,80,255]],['yellow',[255,255,0]]];
+function showPattern(){const el=$('pat'),c=$('patC');el.style.display='block';const go=()=>{c.width=innerWidth;c.height=innerHeight;const g=c.getContext('2d'),w=c.width,h=c.height,m=Math.round(Math.min(w,h)*0.09),i=Math.round(m*0.4);
+ g.fillStyle='#000';g.fillRect(0,0,w,h);const pts=[[i,i],[w-i-m,i],[w-i-m,h-i-m],[i,h-i-m]];PAT.W=w;PAT.H=h;PAT.pts=pts.map(([x,y])=>[x+m/2,y+m/2]);
+ pts.forEach(([x,y],k)=>{g.fillStyle='#fff';g.fillRect(x-6,y-6,m+12,m+12);g.fillStyle='rgb('+MC[k][1]+')';g.fillRect(x,y,m,m);});
+ g.fillStyle='#fff';for(let x=0;x<=w;x+=w/40){g.fillRect(x,h-(Math.round(x/(w/40))%5?12:28),2,40);}
+ g.font='24px sans-serif';g.textAlign='center';g.fillText('Ota kuva: koko näyttö + syntikka näkyviin. Klikkaa/Esc sulkee.',w/2,h/2);};
+ document.documentElement.requestFullscreen?.().catch(()=>{}).finally(()=>setTimeout(go,300));go();}
+$('patBtn').onclick=showPattern;$('pat').onclick=()=>{$('pat').style.display='none';};
+addEventListener('keydown',e=>{if(e.key==='Escape')$('pat').style.display='none';});
+function solve(A,b){const n=b.length;for(let i=0;i<n;i++){let mx=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[mx][i]))mx=r;[A[i],A[mx]]=[A[mx],A[i]];[b[i],b[mx]]=[b[mx],b[i]];
+ for(let r=i+1;r<n;r++){const f=A[r][i]/A[i][i];for(let c=i;c<n;c++)A[r][c]-=f*A[i][c];b[r]-=f*b[i];}}const x=new Array(n);for(let i=n-1;i>=0;i--){let v=b[i];for(let c=i+1;c<n;c++)v-=A[i][c]*x[c];x[i]=v/A[i][i];}return x;}
+function homog(src,dst){const A=[],b=[];for(let k=0;k<4;k++){const [x,y]=src[k],[u,v]=dst[k];A.push([x,y,1,0,0,0,-u*x,-u*y]);b.push(u);A.push([0,0,0,x,y,1,-v*x,-v*y]);b.push(v);}const h=solve(A,b);h.push(1);return h;}
+const hap=(h,[x,y])=>{const w=h[6]*x+h[7]*y+1;return[(h[0]*x+h[1]*y+h[2])/w,(h[3]*x+h[4]*y+h[5])/w];};
+let PC=null;
+$('photo').onchange=e=>{const f=e.target.files[0];if(!f)return;const img=new Image();img.onload=()=>calibPhoto(img);img.src=URL.createObjectURL(f);e.target.value='';};
+function calibPhoto(img){if(!PAT.pts){PAT.W=innerWidth;PAT.H=innerHeight;const m=Math.round(Math.min(PAT.W,PAT.H)*0.09),i=Math.round(m*0.4);PAT.pts=[[i+m/2,i+m/2],[PAT.W-i-m/2,i+m/2],[PAT.W-i-m/2,PAT.H-i-m/2],[i+m/2,PAT.H-i-m/2]];}
+ const sc=Math.min(1,1400/Math.max(img.width,img.height)),c=$('pcC');c.width=Math.round(img.width*sc);c.height=Math.round(img.height*sc);const g=c.getContext('2d');g.drawImage(img,0,0,c.width,c.height);
+ const d=g.getImageData(0,0,c.width,c.height).data,W2=c.width,H2=c.height;const acc=MC.map(()=>[0,0,0]);
+ for(let y=0;y<H2;y+=2)for(let x=0;x<W2;x+=2){const i=(y*W2+x)*4,r=d[i],gg=d[i+1],b=d[i+2],mx=Math.max(r,gg,b),mn=Math.min(r,gg,b);if(mx<110||mx-mn<90)continue;
+  let k=-1;if(r>gg*1.8&&r>b*1.8)k=0;else if(gg>r*1.6&&gg>b*1.4)k=1;else if(b>r*1.6&&b>gg*1.1)k=2;else if(r>b*2&&gg>b*2&&Math.abs(r-gg)<60)k=3;
+  if(k>=0){acc[k][0]+=x;acc[k][1]+=y;acc[k][2]++;}}
+ const found=acc.every(a=>a[2]>15);PC={img,g,W2,H2,d,clicks:[],sc};
+ if(found){PC.mk=acc.map(a=>[a[0]/a[2],a[1]/a[2]]);PC.H=homog(PC.mk,PAT.pts);PC.Hinv=homog(PAT.pts,PC.mk);autoKeys();}
+ else{PC.mk=null;$('pcMsg').textContent='Kulmamerkkejä ei löytynyt (näytä kuvio ja ota kuva uudelleen; vältä heijastuksia).';}
+ $('pc').style.display='block';drawPC();}
+function autoKeys(){// sample rows below screen bottom edge in photo, find longest bright run
+ const [bl,br]=[PC.mk[3],PC.mk[2]];const dx=br[0]-bl[0],dy=br[1]-bl[1],len=Math.hypot(dx,dy),nx=-dy/len,ny=dx/len;let best=null;
+ for(let off=len*0.05;off<len*0.6;off+=len*0.01){let run=0,st=0,bs=0,be=0,lb=0;for(let t=-0.3;t<=1.3;t+=0.002){const x=Math.round(bl[0]+dx*t+nx*off),y=Math.round(bl[1]+dy*t+ny*off);if(x<0||y<0||x>=PC.W2||y>=PC.H2){run=0;continue;}
+   const i=(y*PC.W2+x)*4,v=(PC.d[i]+PC.d[i+1]+PC.d[i+2])/3;if(v>150){if(!run)st=t;run++;lb=t;if(t-st>be-bs){bs=st;be=t;}}else if(run&&t-lb>0.012){run=0;}}
+  if(be-bs>0.25&&(!best||be-bs>best.e-best.s))best={s:bs,e:be,off};}
+ if(!best){$('pcMsg').textContent='Merkit löytyivät, mutta koskettimistoa ei. Klikkaa reunat itse.';PC.clicks=[];PC.wait=true;return;}
+ PC.clicks=[[bl[0]+dx*best.s+nx*best.off,bl[1]+dy*best.s+ny*best.off],[bl[0]+dx*best.e+nx*best.off,bl[1]+dy*best.e+ny*best.off]];compute();}
+function compute(){if(!PC.H||PC.clicks.length<2)return;const a=hap(PC.H,PC.clicks[0]),b=hap(PC.H,PC.clicks[1]);PC.res={l:a[0]/PAT.W*100,w:(b[0]-a[0])/PAT.W*100};
+ $('pcMsg').textContent='Tulos: vasen '+PC.res.l.toFixed(1)+' %, leveys '+PC.res.w.toFixed(1)+' %. Tarkista sininen viiva – hyväksy tai klikkaa reunat itse.';}
+function drawPC(){const g=PC.g;g.drawImage(PC.img,0,0,PC.W2,PC.H2);if(PC.mk)PC.mk.forEach(([x,y],k)=>{g.strokeStyle='#fff';g.lineWidth=3;g.beginPath();g.arc(x,y,12,0,7);g.stroke();});
+ if(PC.mk){g.strokeStyle='#0ff';g.lineWidth=2;g.beginPath();PC.mk.forEach((p,i)=>i?g.lineTo(...p):g.moveTo(...p));g.closePath();g.stroke();}
+ PC.clicks.forEach(([x,y])=>{g.fillStyle='#f0f';g.beginPath();g.arc(x,y,7,0,7);g.fill();});
+ if(PC.res&&PC.Hinv){// preview projected key lines along screen bottom
+  const l=PC.res.l/100*PAT.W,w=PC.res.w/100*PAT.W;g.strokeStyle='#39f';g.lineWidth=4;g.beginPath();g.moveTo(...hap(PC.Hinv,[l,PAT.H]));g.lineTo(...hap(PC.Hinv,[l+w,PAT.H]));g.stroke();
+  const wh=whites(S.keys,S.low);g.lineWidth=1;for(let k=0;k<=wh;k++){const x=l+w*k/wh;g.beginPath();g.moveTo(...hap(PC.Hinv,[x,PAT.H*0.93]));g.lineTo(...hap(PC.Hinv,[x,PAT.H]));g.stroke();}}}
+$('pcC').onclick=e=>{if(!PC||!PC.wait)return;const r=e.target.getBoundingClientRect();const p=[(e.clientX-r.left)*PC.W2/r.width,(e.clientY-r.top)*PC.H2/r.height];PC.clicks.push(p);
+ if(PC.clicks.length===1)$('pcMsg').textContent='Klikkaa nyt ylimmän koskettimen OIKEA reuna.';if(PC.clicks.length>=2){PC.wait=false;if(PC.H)compute();else $('pcMsg').textContent='Ilman kulmamerkkejä mittaa ei voi laskea.';}drawPC();};
+$('pcClick').onclick=()=>{if(!PC)return;PC.clicks=[];PC.res=null;PC.wait=true;$('pcMsg').textContent='Klikkaa alimman koskettimen VASEN reuna.';drawPC();};
+$('pcOk').onclick=()=>{if(PC&&PC.res){S.physOn=false;S.kbLeft=PC.res.l;S.kbW=PC.res.w;syncUI();save();physUI();}$('pc').style.display='none';};
+$('pcCancel').onclick=()=>{$('pc').style.display='none';};
+
+// ---- microphone pitch detection
+let mic=null;
+function inputUI(){$('input').value=S.input;$('micBox').style.display=S.input==='mic'?'':'none';}
+$('input').onchange=e=>{S.input=e.target.value;save();inputUI();if(S.input!=='mic')stopMic();};
+$('micBtn').onclick=()=>mic?stopMic():startMic();
+function stopMic(){if(!mic)return;mic.stream.getTracks().forEach(t=>t.stop());clearInterval(mic.iv);mic.held.forEach(n=>userOff(n));mic=null;$('micStatus').innerHTML='<small>Mikrofoni pois</small>';$('micBtn').textContent='Käynnistä mikrofoni';}
+function startMic(){audio();if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('micStatus').innerHTML='<small>Selain ei tue mikrofonia (tarvitaan https tai file:// Chromessa).</small>';return;}
+ navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(stream=>{
+  const src=ac.createMediaStreamSource(stream),an=ac.createAnalyser();an.fftSize=4096;src.connect(an);
+  mic={stream,an,buf:new Float32Array(an.fftSize),fb:new Float32Array(an.frequencyBinCount),held:new Set(),cand:null,cnt:0};
+  mic.iv=setInterval(micTick,25);$('micStatus').innerHTML='<small>🎤 Kuuntelee…</small>';$('micBtn').textContent='Pysäytä mikrofoni';
+ }).catch(()=>{$('micStatus').innerHTML='<small>Mikrofonilupa evätty.</small>';});}
+function yin(b,sr){const N=b.length>>1,d=new Float32Array(N);let rs=0;
+ for(let t=1;t<N;t++){let s=0;for(let i=0;i<N;i+=2){const x=b[i]-b[i+t];s+=x*x;}d[t]=s;}
+ d[0]=1;for(let t=1;t<N;t++){rs+=d[t];d[t]=d[t]*t/(rs||1);}
+ const minT=Math.floor(sr/1500),maxT=Math.min(N-1,Math.floor(sr/60));
+ for(let t=minT;t<maxT;t++){if(d[t]<0.15){while(t+1<maxT&&d[t+1]<d[t])t++;const a=d[t-1],c=d[t+1],bb=d[t];const sh=(a-c)/(2*(a-2*bb+c)||1);return sr/(t+(isFinite(sh)?sh:0));}}
+ return 0;}
+function micTick(){const {an,buf}=mic;an.getFloatTimeDomainData(buf);let rms=0;for(const v of buf)rms+=v*v;rms=Math.sqrt(rms/buf.length);
+ let notes=[];
+ if(rms>S.micGate){if(S.micChord){an.getFloatFrequencyData(mic.fb);const sr=ac.sampleRate,bw=sr/an.fftSize,e=new Map();
+   for(let i=2;i<mic.fb.length;i++){const f=i*bw;if(f<60||f>2000)continue;const v=mic.fb[i];if(v>mic.fb[i-1]&&v>=mic.fb[i+1]&&v>-55){const n=Math.round(69+12*Math.log2(f/440));e.set(n,Math.max(e.get(n)||-999,v));}}
+   const arr=[...e].sort((a,b)=>b[1]-a[1]);const top=arr.length?arr[0][1]:0;
+   notes=arr.filter(([n,v])=>v>top-12).map(x=>x[0]).filter(n=>!arr.some(([m,w])=>(n-m===12||n-m===19||n-m===24)&&w>-999)).slice(0,4);}
+  else{const f=yin(buf,ac.sampleRate);if(f>0)notes=[Math.round(69+12*Math.log2(f/440))];}}
+ const key=notes.slice().sort().join(',');
+ if(key===mic.cand)mic.cnt++;else{mic.cand=key;mic.cnt=1;}
+ if(mic.cnt===2){const want=new Set(notes);for(const n of [...mic.held])if(!want.has(n)){mic.held.delete(n);userOff(n);}
+  for(const n of want)if(!mic.held.has(n)){mic.held.add(n);userOn(n,true,S.micLat/1000);}
+  $('detNote').textContent=notes.length?notes.map(noteName).join(' + '):'–';}}
+inputUI();if(S.input==='mic')$('micStatus').innerHTML='<small>Paina "Käynnistä mikrofoni" (selain kysyy luvan)</small>';
+
+// ---- drawing / layout
+const cv=$('c'),cx=cv.getContext('2d');let W,H,DPR;
+function resize(){DPR=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;cx.setTransform(DPR,0,0,DPR,0,0);}addEventListener('resize',resize);resize();
+function layout(){const lo=S.low,hi=S.low+S.keys-1;let whites=0;for(let n=lo;n<=hi;n++)if(!isBlack(n))whites++;
+ const x0=W*S.kbLeft/100,kw=W*S.kbW/100,ww=kw/whites,kh=H*S.kbH/100;const ky=S.flip?0:H-kh;const pos={};let wi=0;
+ for(let n=lo;n<=hi;n++){if(!isBlack(n)){pos[n]={x:x0+wi*ww,w:ww,b:false};wi++;}else pos[n]={x:x0+wi*ww-ww*0.3,w:ww*0.6,b:true};}
+ return{lo,hi,pos,ww,kh,ky,x0,kw};}
+// calibration dragging
+let drag=null;cv.addEventListener('pointerdown',e=>{if(!$('calib').checked)return;drag={x:e.clientX,y:e.clientY,l:S.kbLeft,w:S.kbW,h:S.kbH,sh:e.shiftKey};});
+addEventListener('pointermove',e=>{if(!drag)return;const dx=(e.clientX-drag.x)/W*100;if(drag.sh)S.kbW=Math.max(20,drag.w+dx);else S.kbLeft=drag.l+dx;
+ const dy=(e.clientY-drag.y)/H*100;S.kbH=Math.min(40,Math.max(3,drag.h+(S.flip?dy:-dy)));syncUI();});
+addEventListener('pointerup',()=>{if(drag){drag=null;save();}});
+const COL={R:['#3fb6ff','#2a7fe0','#1240a0'],L:['#ffa040','#e06a20','#902a10']};
+function hud(){const tot=song?song.notes.filter(active).length:0;$('hud').textContent=(song?song.name:'')+'  |  Pisteet '+score+'  Osumat '+hits+'/'+tot+'  Ohi '+misses+(combo>2?'  Kombo x'+combo:'')+(playing?'':'  ⏸ (välilyönti)');}
+
+function rr(x,y,w,h,r){cx.beginPath();if(cx.roundRect)cx.roundRect(x,y,w,h,r);else cx.rect(x,y,w,h);}
+const stars=Array.from({length:150},()=>({x:Math.random(),y:Math.random(),z:Math.random()*0.9+0.1,p:Math.random()*6}));
+const parts=[],pops=[];let lastLayout=null;
+function burst(n,c,cnt){const L=lastLayout;if(!L||!L.pos[n])return;const p=L.pos[n];const y=S.flip?L.kh:L.ky;const m=S.gfx==='lite'?Math.ceil(cnt/4):cnt;
+ for(let i=0;i<m&&parts.length<600;i++){const a=(S.flip?1:-1)*(Math.random()*Math.PI);parts.push({x:p.x+p.w/2,y,vx:Math.cos(a)*(80+Math.random()*250),vy:Math.sin(a)*(150+Math.random()*350),l:0.5+Math.random()*0.6,s:2+Math.random()*3,c});}}
+function popup(t,n,c,big){const L=lastLayout;if(!L)return;const p=L.pos[n];pops.push({t,x:big?W/2:(p?p.x+p.w/2:W/2),y:big?H/3:(S.flip?L.kh+40:L.ky-30),c,l:1,big});}
+let last=performance.now();
+function frame(now){const dt=Math.min(0.1,(now-last)/1000);last=now;const L=layout();
+ // update
+ if(song&&playing){let adv=dt*S.tempo;
+  if(S.mode==='wait'){const pend=song.notes.find(x=>active(x)&&!x.hit&&x.t<=songT+adv&&x.t>songT-0.5);
+   if(pend&&pend.t<=songT+adv){adv=Math.max(0,pend.t-songT);}}
+  songT+=adv;
+  for(const x of song.notes){if(x.t>songT+0.05)break;const n=tr(x);const auto=S.mode==='listen'||(!active(x)&&S.autoOther);
+   if(auto&&!x.hit&&x.t<=songT){x.hit=true;noteOn(n,0.8);autoOn.add(n);if(S.mode==='listen')burst(n,(COL[x.h]||COL.R)[0],10);x.autoEnd=x.t+x.d;}
+   if(S.mode==='play'&&active(x)&&!x.hit&&!x.miss&&songT>x.t+0.25*S.tempo+0.1){x.miss=true;misses++;if(combo>=10)popup('Kombo katkesi',tr(x),'#f66',true);combo=0;popup('Ohi',tr(x),'#f66');}}
+  for(const x of song.notes){if(x.autoEnd!=null&&songT>=x.autoEnd){const n=tr(x);if(autoOn.has(n)){autoOn.delete(n);if(!pressed.has(n))noteOff(n);}x.autoEnd=null;}}
+  const end=song.notes.length?song.notes[song.notes.length-1].t+song.notes[song.notes.length-1].d+1:0;if(songT>end){playing=false;stopAuto();}}
+ // draw
+ const FULL=S.gfx!=='lite',T=now/1000;
+ if(FULL){const g=cx.createLinearGradient(0,0,0,H);const hh=(T*8)%360;g.addColorStop(0,`hsl(${230+20*Math.sin(T*0.2)},60%,9%)`);g.addColorStop(1,`hsl(${280+20*Math.sin(T*0.15)},50%,6%)`);cx.fillStyle=g;cx.fillRect(0,0,W,H);
+  for(const st of stars){st.y+=st.z*dt*20*(playing?S.tempo*2:0.5);if(st.y>1)st.y-=1;cx.globalAlpha=0.3+0.7*st.z*(0.6+0.4*Math.sin(T*3+st.p));cx.fillStyle='#fff';cx.fillRect(st.x*W,(S.flip?1-st.y:st.y)*H,st.z*2,st.z*2);}cx.globalAlpha=1;}
+ else{cx.fillStyle='#0b0d17';cx.fillRect(0,0,W,H);}
+ const fallH=H-L.kh,pps=fallH/S.fall,top=S.flip?L.kh:0;
+ const Y=t=>S.flip?L.kh+(t-songT)*pps:fallH-(t-songT)*pps;
+ // lanes
+ for(let n=L.lo;n<=L.hi;n++){const p=L.pos[n];if(!p.b&&n%12===0){cx.fillStyle='#ffffff14';cx.fillRect(p.x,top,1,fallH);}}
+ // beat lines
+ if(song&&song.beat){const bt=song.beat;let k=Math.ceil(songT/bt);for(;;k++){const t=k*bt;if((t-songT)*pps>fallH)break;const y=Y(t);const bar=k%4===0;cx.fillStyle=bar?'#ffffff30':'#ffffff10';cx.fillRect(0,y,W,bar?2:1);}}
+ const lit={};
+ if(song){for(const x of song.notes){const n=tr(x);const p=L.pos[n];const y0=(x.t-songT)*pps;if(y0>fallH)break;const y1=(x.t+x.d-songT)*pps;if(x.t<=songT&&x.t+x.d>songT)lit[n]=x.h;if(y1<-5||!p)continue;
+  const h=Math.max(6,Math.min(y1,fallH+40)-Math.max(y0,-40));const yy=S.flip?L.kh+Math.max(y0,-40):fallH-Math.max(y0,-40)-h;const c=COL[x.h]||COL.R;
+  cx.globalAlpha=active(x)?1:0.35;let c1=p.b?c[1]:c[0],c2=c[2];if(x.miss){c1='#844';c2='#422';}else if(x.hit&&active(x)&&S.mode!=='listen'){c1='#6f8';c2='#2a5';}
+  const r=Math.min(8,p.w/2.5);const xx=p.x+1.5,ww=p.w-3;
+  if(FULL){cx.shadowColor=c1;cx.shadowBlur=18;const g=cx.createLinearGradient(xx,0,xx+ww,0);g.addColorStop(0,c2);g.addColorStop(0.5,c1);g.addColorStop(1,c2);cx.fillStyle=g;}else cx.fillStyle=c1;
+  rr(xx,yy,ww,h,r);cx.fill();cx.shadowBlur=0;
+  if(FULL){cx.fillStyle='#ffffff40';rr(xx+ww*0.15,yy+2,ww*0.25,h-4,r/2);cx.fill();cx.strokeStyle='#ffffff70';cx.lineWidth=1;rr(xx,yy,ww,h,r);cx.stroke();}
+  if(S.names&&h>16&&p.w>14){cx.fillStyle='#fff';cx.font='bold '+Math.min(14,p.w*0.45)+'px sans-serif';cx.textAlign='center';cx.fillText(noteName(n).replace(/-?\d+$/,''),p.x+p.w/2,S.flip?yy+15:yy+h-5);}
+  cx.globalAlpha=1;}
+  const oor=song.notes.some(x=>tr(x)<L.lo||tr(x)>L.hi);if(oor){cx.fillStyle='#f88';cx.font='14px sans-serif';cx.textAlign='center';cx.fillText('Osa nuoteista on koskettimiston ulkopuolella – muuta alinta nuottia tai oktaavisiirtoa',W/2,60);}}
+ // hit line glow
+ const hy=S.flip?L.kh:L.ky;
+ if(FULL){const g=cx.createLinearGradient(0,hy-14,0,hy+2);g.addColorStop(0,'#0000');g.addColorStop(1,'#8cf6');cx.fillStyle=g;cx.fillRect(L.x0,S.flip?hy:hy-14,L.kw,14);}
+ cx.fillStyle='#bdf';cx.fillRect(L.x0,hy-1,L.kw,2);
+ // keys
+ const drawKey=(n,p)=>{const h=p.b?L.kh*0.62:L.kh;const yk=S.flip?L.kh-h:L.ky;const down=pressed.has(n)||lit[n];
+  let tint=null;if(lit[n])tint=(COL[lit[n]]||COL.R)[0];if(pressed.has(n))tint='#6f8';const f=flash[n];if(f&&now-f.t<200)tint=f.c;
+  const x=p.x+(p.b?0:1),w=p.w-(p.b?0:2),dy=down?2:0;
+  if(FULL){const g=cx.createLinearGradient(0,yk,0,yk+h);
+   if(p.b){g.addColorStop(0,tint||'#3a3a44');g.addColorStop(0.15,tint?tint:'#1a1a20');g.addColorStop(0.9,'#050507');g.addColorStop(1,'#222');}
+   else{g.addColorStop(0,'#cfd3dc');g.addColorStop(0.08,tint||'#fdfdff');g.addColorStop(0.92,tint||'#e9ebf0');g.addColorStop(1,'#a8acb6');}
+   cx.fillStyle=g;rr(x,yk+dy,w,h-dy,p.b?3:5);cx.fill();
+   if(p.b){cx.fillStyle='#ffffff22';cx.fillRect(x+w*0.15,yk+dy+2,w*0.7,h*0.5);}
+   else{cx.fillStyle='#0003';cx.fillRect(x+w-1,yk,1,h);}
+   if(tint){cx.shadowColor=tint;cx.shadowBlur=25;cx.fillStyle=tint+'55';cx.fillRect(x,S.flip?yk+h-4:yk,w,4);cx.shadowBlur=0;}}
+  else{cx.fillStyle=tint||(p.b?'#111':'#f4f4f4');cx.fillRect(x,yk,w,h);}
+  if(!p.b&&n%12===0){cx.fillStyle='#666';cx.font=Math.min(12,p.w*0.4)+'px sans-serif';cx.textAlign='center';cx.fillText(noteName(n),p.x+p.w/2,S.flip?yk+12:yk+h-6);}};
+ if(FULL){cx.fillStyle='#000';cx.fillRect(L.x0-4,L.ky,L.kw+8,L.kh);}
+ for(let n=L.lo;n<=L.hi;n++)if(!L.pos[n].b)drawKey(n,L.pos[n]);
+ if(FULL){const g=cx.createLinearGradient(0,L.ky,0,L.ky+L.kh*0.08);g.addColorStop(0,'#0008');g.addColorStop(1,'#0000');cx.fillStyle=g;cx.fillRect(L.x0,S.flip?L.kh-L.kh*0.08:L.ky,L.kw,L.kh*0.08);}
+ for(let n=L.lo;n<=L.hi;n++)if(L.pos[n].b)drawKey(n,L.pos[n]);
+ // key glow beams
+ if(FULL){cx.globalCompositeOperation='lighter';for(const n in lit){const p=L.pos[n];if(!p)continue;const c=(COL[lit[n]]||COL.R)[0];const g=cx.createLinearGradient(0,hy,0,S.flip?hy+120:hy-120);g.addColorStop(0,c+'88');g.addColorStop(1,c+'00');cx.fillStyle=g;cx.fillRect(p.x,S.flip?hy:hy-120,p.w,120);}cx.globalCompositeOperation='source-over';}
+ // particles
+ cx.globalCompositeOperation='lighter';for(let i=parts.length-1;i>=0;i--){const q=parts[i];q.l-=dt;if(q.l<=0){parts.splice(i,1);continue;}q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=(S.flip?-1:1)*600*dt;cx.globalAlpha=Math.min(1,q.l*2);cx.fillStyle=q.c;cx.beginPath();cx.arc(q.x,q.y,q.s*q.l,0,7);cx.fill();}cx.globalAlpha=1;cx.globalCompositeOperation='source-over';
+ // popups
+ for(let i=pops.length-1;i>=0;i--){const q=pops[i];q.l-=dt;if(q.l<=0){pops.splice(i,1);continue;}const k=1-q.l;cx.globalAlpha=Math.min(1,q.l*2);cx.fillStyle=q.c;cx.font=`bold ${q.big?Math.round(40+30*Math.sin(Math.min(1,k*4)*Math.PI/2)):18}px sans-serif`;cx.textAlign='center';if(FULL){cx.shadowColor=q.c;cx.shadowBlur=15;}cx.fillText(q.t,q.x,q.y+(S.flip?1:-1)*k*60);cx.shadowBlur=0;}cx.globalAlpha=1;
+ if($('calib').checked){cx.strokeStyle='#ff0';cx.lineWidth=2;cx.strokeRect(L.x0,L.ky,L.kw,L.kh);cx.fillStyle='#ff0';cx.font='16px sans-serif';cx.textAlign='center';
+  cx.fillText('KALIBROINTI: raahaa siirtääksesi, Shift+raahaa = leveys, pysty = korkeus. Vasen: '+noteName(L.lo)+'  Oikea: '+noteName(L.hi),W/2,S.flip?L.kh+30:L.ky-20);}
+ if(songT<0&&playing){const v=Math.ceil(-songT),f=-songT%1;cx.globalAlpha=f;cx.fillStyle='#fff';cx.font=`bold ${60+80*(1-f)}px sans-serif`;cx.textAlign='center';if(FULL){cx.shadowColor='#8cf';cx.shadowBlur=30;}cx.fillText(v,W/2,H/3);cx.shadowBlur=0;cx.globalAlpha=1;}
+ lastLayout=L;
+ hud();requestAnimationFrame(frame);}
+$('song').onchange({target:$('song')});requestAnimationFrame(frame);
+if(location.hash==='#demo'){$('song').value=SONGS.findIndex(x=>x[0].startsWith('The Entertainer'));$('song').onchange({target:$('song')});S.mode='listen';$('panel').classList.add('hidden');playing=true;songT=3;combo=20;setTimeout(()=>{popup('Kombo x20!',60,'#f6f',true);for(const n of [64,69,52])burst(n,'#ffe066',30);},200);}
+</script></body></html>
