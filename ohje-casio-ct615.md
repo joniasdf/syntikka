@@ -21,6 +21,14 @@ Koska MIDI:ä ei ole, vaihtoehtoja on kolme:
 
 (Jos myöhemmin hankit MIDI-soittimen: USB-MIDI toimii suoraan; pelkkä DIN MIDI OUT vaatii USB-MIDI-sovittimen. MIDI-kanava: peli kuuntelee kaikkia kanavia.)
 
+## 1b. Tunnistustesti
+Paina asetusten yläosassa **🎯 Tunnistustesti** ennen soittamista:
+1. **Hiljaisuus** – 2 s taustamelun mittaus, ehdottaa kohinaportin.
+2. **Vapaa testi** – näyttää tunnistetun nuotin, taajuuden, virityksen (senttiä) ja äänitason ("Ei ääntä" / "Liian hiljaa" / "Tunnistettu: X").
+3. **Ohjattu testi** – soita korostetut nuotit yksi kerrallaan; tulokset oikein / väärin / oktaavivirhe.
+4. **Rytmitesti** – soita kun ympyrä välähtää; mittaa viiveen.
+5. **Yhteenveto** – tarkkuus %, viive ja **Käytä suositusasetuksia** (kohinaportti, viiveen kompensointi, sointutunnistus pois).
+
 ## 2. Selain
 - Käytä **Chromea tai Edgeä**. Avaa `index.html` ja salli **mikrofoni** (tai MIDI) kun selain kysyy.
 - Paina **⛶ Koko näyttö** – mittojen laskenta on tarkin koko näytön tilassa.
